@@ -1,0 +1,76 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "GoLibraryTemplate: Race Test",
+            "type": "shell",
+            "command": "go",
+            "args": [
+                "test",
+                "-race",
+                "-v",
+                "-covermode=atomic",
+                "-timeout",
+                "5m",
+                "./..."
+            ],
+            "group": "test"
+        },
+        {
+            "label": "GoLibraryTemplate: Test",
+            "type": "shell",
+            "command": "go",
+            "args": [
+                "test",
+                "-v",
+                "-covermode=atomic",
+                "-timeout",
+                "5m",
+                "./..."
+            ],
+            "group": "test"
+        },
+        {
+            "label": "GoLibraryTemplate: Format",
+            "type": "shell",
+            "command": "gofumpt",
+            "args": [
+                "-l",
+                "-w",
+                "."
+            ],
+            "group": "none",
+            "problemMatcher": []
+        },
+        {
+            "label": "GoLibraryTemplate: Lint",
+            "type": "shell",
+            "command": "golangci-lint",
+            "args": [
+                "run"
+            ],
+            "group": "none"
+        },
+        {
+            "label": "GoLibraryTemplate: GoMod Tidy",
+            "type": "shell",
+            "command": "go",
+            "args": [
+                "mod",
+                "tidy"
+            ],
+            "group": "none",
+            "problemMatcher": []
+        },
+        {
+            "label": "GoLibraryTemplate: Security Check",
+            "type": "shell",
+            "command": "gosec",
+            "args": [
+                "./..."
+            ],
+            "group": "none",
+            "problemMatcher": []
+        }
+    ],
+}
