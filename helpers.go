@@ -2,21 +2,17 @@ package amqp
 
 import (
 	"context"
-	"encoding/json"
 	"sync"
-	"time"
 
 	"github.com/rabbitmq/amqp091-go"
 )
 
-
-
-func listener[T Message](
+func listener(
 	ctx context.Context,
 	wg *sync.WaitGroup,
 	channel *amqp091.Channel,
 	config *QueueConfig,
-	handler Handler[T],
+	handler RawHandler,
 	logger Logger,
 	queueName string,
 ) {
@@ -29,90 +25,33 @@ func listener[T Message](
 	}
 
 	// Extract to QueueConfig
-	_ = channel.Qos(config.PrefetchCount, config.PrefetchSize, false)
-	defer channel.Close()
+	//if err = channel.Qos(config.PrefetchCount, 0, false); err != nil {
+	//	logger.Error("Failed to set QoS: %v", err)
+	//	return
+	//}
+
+	defer func(channel *amqp091.Channel) {
+		if !channel.IsClosed() {
+			err := channel.Close()
+			if err != nil {
+				panic(err)
+			}
+		}
+	}(channel)
 
 	for {
 		select {
 		case delivery, more := <-dataStream:
-			var body T
-
-			switch delivery.ContentType {
-			case "application/json":
-				fallthrough
-			default:
-				if err := json.Unmarshal(delivery.Body, &body); err != nil {
-					logger.Error("Failed to deserialize AMQP Message(%s): %v", queueName, err)
-					if ackErr := delivery.Ack(false); ackErr != nil {
-						logger.Error("Failed to ack AMQP Message(%s): %v", queueName, ackErr)
-					}
-					continue
-				}
-			}
-
-			if err := handler.Handle(ctx, body); err != nil {
-				if ackErr := delivery.Nack(false, true); ackErr != nil {
-					logger.Error("Failed to nack AMQP Message(%s): %v", queueName, ackErr)
-				}
-				continue
-			}
-
-			if ackErr := delivery.Ack(false); ackErr != nil {
-				logger.Error("Failed to ack AMQP Message(%s): %v", queueName, ackErr)
-			}
-
 			if !more {
 				return
 			}
+
+			if err := handler.Handle(ctx, &delivery); err != nil {
+				logger.Error("Failed to handle message: %v", err)
+				continue
+			}
 		case <-ctx.Done():
 			return
-		}
-	}
-}
-
-func handleErrors[T Message](base context.Context, queue *queue[T], ch chan *amqp091.Error, connectionString string, amqpConfig amqp091.Config) {
-	reconnect := func(amqpErr *amqp091.Error) error {
-		var err error
-
-		conn, err := amqp091.DialConfig(connectionString, amqpConfig)
-		if err != nil {
-			queue.logger.Error("Failed to reconnect to RabbitMQ: %v", err)
-			return err
-		}
-
-		newCh := make(chan *amqp091.Error)
-		conn.NotifyClose(newCh)
-		go handleErrors(base, queue, newCh, connectionString, amqpConfig)
-
-		if amqpErr.Code != amqp091.ConnectionForced {
-			close(ch)
-		}
-
-		ctx, cancel := context.WithCancel(base)
-
-		queue.connection = conn
-		queue.ctx = ctx
-		queue.cancel = cancel
-		if err = queue.Listen(); err != nil {
-			queue.logger.Error("Failed start listeners: %v", err)
-			return err
-		}
-
-		return nil
-	}
-
-	for amqpErr := range ch {
-		if shouldReconnect(amqpErr) {
-			queue.Close()
-
-			if err := reconnect(amqpErr); err != nil {
-				for i := 0; i < queue.cfg.RetryCount-1; i++ {
-					time.Sleep(queue.cfg.SleepInterval)
-					if err := reconnect(amqpErr); err == nil {
-						break
-					}
-				}
-			}
 		}
 	}
 }
