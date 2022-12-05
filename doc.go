@@ -1,2 +1,2 @@
 // Documentation
-package golibrarytemplate
+package amqp
