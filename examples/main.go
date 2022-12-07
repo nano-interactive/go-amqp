@@ -7,8 +7,8 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/nano-interactive/go-amqp"
 	"github.com/nano-interactive/go-amqp/connection"
+	"github.com/nano-interactive/go-amqp/consumer"
 )
 
 type Message struct {
@@ -37,12 +37,12 @@ func main() {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt)
 
-	consumer := amqp.NewConsumer(ctx)
+	c := consumer.New(ctx)
 
-	err := amqp.AddListenerFunc(consumer, handler,
-		amqp.WithQueueName("test"),
-		amqp.WithLogger(&logger{}),
-		amqp.WithConnectionConfig(connection.Config{
+	err := consumer.AddListenerFunc(c, handler,
+		consumer.WithQueueName("test"),
+		consumer.WithLogger(&logger{}),
+		consumer.WithConnectionConfig(connection.Config{
 			Host:              "127.0.0.1",
 			Port:              5672,
 			User:              "guest",
@@ -53,7 +53,7 @@ func main() {
 			ReconnectInterval: 1 * time.Second,
 			Channels:          1000,
 		}),
-		amqp.WithQueueConfig(amqp.QueueConfig{
+		consumer.WithQueueConfig(consumer.QueueConfig{
 			ConnectionNamePrefix: "go-amqp",
 			Workers:              1,
 			PrefetchCount:        128,
@@ -63,12 +63,12 @@ func main() {
 		panic(err)
 	}
 
-	if err := consumer.Start(); err != nil {
+	if err := c.Start(); err != nil {
 		panic(err)
 	}
 
 	<-sig
-	if err := consumer.Close(); err != nil {
+	if err := c.Close(); err != nil {
 		panic(err)
 	}
 }

@@ -1,9 +1,9 @@
-package amqp
+package consumer
 
 import (
 	"context"
+
 	"github.com/nano-interactive/go-amqp/connection"
-	"time"
 
 	"go.uber.org/multierr"
 )
@@ -20,7 +20,7 @@ type (
 	}
 )
 
-func NewConsumer(ctx context.Context, logger ...Logger) *Consumer {
+func New(ctx context.Context, logger ...Logger) *Consumer {
 	var l Logger = &defaultLogger{}
 
 	if len(logger) > 0 {
@@ -46,17 +46,7 @@ func AddListenerRaw(c *Consumer, h RawHandler, options ...Option) error {
 			ConnectionNamePrefix: "",
 			Workers:              1,
 		},
-		connectionConfig: connection.Config{
-			Host:              "127.0.0.1",
-			User:              "guest",
-			Password:          "guest",
-			Vhost:             "/",
-			ConnectionName:    "go-amqp",
-			Port:              5672,
-			ReconnectRetry:    10,
-			Channels:          100,
-			ReconnectInterval: 5 * time.Second,
-		},
+		connectionConfig: connection.DefaultConfig,
 		logger: &defaultLogger{},
 	}
 

@@ -9,9 +9,22 @@ import (
 	"github.com/rabbitmq/amqp091-go"
 )
 
+var DefaultConfig Config = Config{
+	Host:              "127.0.0.1",
+	User:              "guest",
+	Password:          "guest",
+	Vhost:             "/",
+	Port:              5672,
+	ConnectionName:    "go-amqp",
+	ReconnectRetry:    10,
+	Channels:          100,
+	ReconnectInterval: 1 * time.Second,
+}
+
 type (
 	Connection interface {
 		io.Closer
+		IsClosed() bool
 		SetOnReconnect(onReconnect func() error)
 		SetOnReconnecting(onReconnecting func() error)
 		SetOnError(onReconnecting func(error))
@@ -67,6 +80,12 @@ func shouldReconnect(amqpErr *amqp091.Error) bool {
 func (c *connection) RawConnection() *amqp091.Connection {
 	return c.conn.Load()
 }
+
+
+func (c *connection) IsClosed() bool {
+	return c.conn.Load().IsClosed()
+}
+
 
 func (c *connection) handleErrors(ch chan *amqp091.Error) error {
 	for amqpErr := range ch {

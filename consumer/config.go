@@ -1,4 +1,4 @@
-package amqp
+package consumer
 
 import (
 	"github.com/nano-interactive/go-amqp/connection"
