@@ -9,7 +9,7 @@ import (
 	"github.com/rabbitmq/amqp091-go"
 )
 
-var DefaultConfig Config = Config{
+var DefaultConfig = Config{
 	Host:              "127.0.0.1",
 	User:              "guest",
 	Password:          "guest",
@@ -39,15 +39,15 @@ type (
 	}
 
 	Config struct {
-		Host              string
-		User              string
-		Password          string
-		Vhost             string
-		ConnectionName    string
-		Port              int
-		ReconnectRetry    int
-		Channels          int
-		ReconnectInterval time.Duration
+		Host              string        `json:"host,omitempty" mapstructure:"host" yaml:"host"`
+		User              string        `json:"user,omitempty" mapstructure:"user" yaml:"user"`
+		Password          string        `json:"password,omitempty" mapstructure:"password" yaml:"password"`
+		Vhost             string        `json:"vhost,omitempty" mapstructure:"vhost" yaml:"vhost"`
+		ConnectionName    string        `json:"connection_name,omitempty" mapstructure:"connection_name" yaml:"connection_name"`
+		Port              int           `json:"port,omitempty" mapstructure:"port" yaml:"port"`
+		ReconnectRetry    int           `json:"reconnect_retry,omitempty" mapstructure:"reconnect_retry" yaml:"reconnect_retry"`
+		Channels          int           `json:"channels,omitempty" mapstructure:"channels" yaml:"channels"`
+		ReconnectInterval time.Duration `json:"reconnect_interval,omitempty" mapstructure:"reconnect_interval" yaml:"reconnect_interval"`
 	}
 )
 
@@ -81,11 +81,9 @@ func (c *connection) RawConnection() *amqp091.Connection {
 	return c.conn.Load()
 }
 
-
 func (c *connection) IsClosed() bool {
 	return c.conn.Load().IsClosed()
 }
-
 
 func (c *connection) handleErrors(ch chan *amqp091.Error) error {
 	for amqpErr := range ch {
@@ -138,6 +136,7 @@ func (c *connection) connect() error {
 		ChannelMax: 0,
 		Heartbeat:  1 * time.Second,
 		Properties: properties,
+		Dial:       amqp091.DefaultDial(10 * time.Second),
 	}
 
 	connectionURI := fmt.Sprintf(

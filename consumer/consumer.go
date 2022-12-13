@@ -3,9 +3,10 @@ package consumer
 import (
 	"context"
 
-	"github.com/nano-interactive/go-amqp/connection"
-
 	"go.uber.org/multierr"
+
+	"github.com/nano-interactive/go-amqp"
+	"github.com/nano-interactive/go-amqp/connection"
 )
 
 type (
@@ -13,99 +14,92 @@ type (
 		GetQueueName() string
 	}
 
-	Consumer struct {
-		logger Logger
+	Consumer[T Message] struct {
+		logger amqp.Logger
 		ctx    context.Context
-		queues []*queue
+		queues *queue
 	}
 )
 
-func New(ctx context.Context, logger ...Logger) *Consumer {
-	var l Logger = &defaultLogger{}
+func NewRaw[T Message](ctx context.Context, pool *connection.Pool, h RawHandler, options ...Option) (*Consumer[T], error) {
+	var l amqp.Logger = &amqp.EmptyLogger{}
 
-	if len(logger) > 0 {
-		l = logger[0]
-	}
-
-	return &Consumer{
-		ctx:    ctx,
-		logger: l,
-		queues: make([]*queue, 0, 10),
-	}
-}
-
-type defaultLogger struct{}
-
-func (d defaultLogger) Error(msg string, args ...interface{}) {}
-
-func AddListenerRaw(c *Consumer, h RawHandler, options ...Option) error {
 	opt := Config{
-		queueName: "",
 		queueConfig: QueueConfig{
 			PrefetchCount:        128,
 			ConnectionNamePrefix: "",
 			Workers:              1,
 		},
-		connectionConfig: connection.DefaultConfig,
-		logger: &defaultLogger{},
+		logger: &amqp.EmptyLogger{},
 	}
 
 	for _, o := range options {
 		o(&opt)
 	}
 
+	conn, err := pool.Get(ctx)
+
+	if err != nil {
+		return nil, err
+	}
+
+	var msg T
+
 	queue, err := newQueue(
-		c.ctx,
-		opt.queueName,
+		ctx,
+		msg.GetQueueName(),
 		opt.logger,
 		&opt.queueConfig,
-		&opt.connectionConfig,
+		conn,
 		h,
 	)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	c.queues = append(c.queues, queue)
-	return nil
+	return &Consumer[T]{
+		ctx:    ctx,
+		logger: l,
+		queues: queue,
+	}, nil
 }
 
-func AddListenerRawFunc(c *Consumer, h RawHandlerFunc, options ...Option) error {
-	return AddListenerRaw(c, h, options...)
+func NewRawFunc[T Message](ctx context.Context, pool *connection.Pool, h RawHandlerFunc, options ...Option) (*Consumer[T], error) {
+	return NewRaw[T](ctx, pool, h, options...)
 }
 
-func AddListener[T Message](c *Consumer, h Handler[T], options ...Option) error {
+func New[T Message](ctx context.Context, pool *connection.Pool, h HandlerFunc[T], options ...Option) (*Consumer[T], error) {
 	var msg T
-	return AddListenerRaw(c, &handler[T]{
+
+	return NewRaw[T](ctx, pool, &handler[T]{
 		handler:   h,
 		queueName: msg.GetQueueName(),
 	}, options...)
 }
 
-func AddListenerFunc[T Message](c *Consumer, handler HandlerFunc[T], options ...Option) error {
-	return AddListener[T](c, handler, options...)
+func NewHandler[T Message](ctx context.Context, pool *connection.Pool, h Handler[T], options ...Option) (*Consumer[T], error) {
+	var msg T
+
+	return NewRaw[T](ctx, pool, &handler[T]{
+		queueName: msg.GetQueueName(),
+		handler:   h,
+	}, options...)
 }
 
-func (c *Consumer) Start() error {
+func (c *Consumer[T]) Start() error {
 	var err error
 
-	for _, q := range c.queues {
-		if listenErr := q.Listen(); listenErr != nil {
-			err = multierr.Append(err, listenErr)
-		}
+	if listenErr := c.queues.Listen(); listenErr != nil {
+		err = multierr.Append(err, listenErr)
 	}
 
 	return err
 }
 
-func (c *Consumer) Close() error {
-	var err error
-
-	for _, q := range c.queues {
-		if closeErr := q.Close(); closeErr != nil {
-			err = multierr.Append(err, closeErr)
-		}
+func (c *Consumer[T]) Close() error {
+	if err := c.queues.Close(); err != nil {
+		return err
 	}
 
-	return err
+	return nil
 }

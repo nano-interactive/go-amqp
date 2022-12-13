@@ -2,15 +2,13 @@ package consumer
 
 import (
 	"context"
+	"github.com/nano-interactive/go-amqp"
 	"sync"
 
 	"github.com/nano-interactive/go-amqp/connection"
 )
 
 type (
-	Logger interface {
-		Error(string, ...any)
-	}
 	QueueConfig struct {
 		ConnectionNamePrefix string
 		Workers              int
@@ -18,7 +16,7 @@ type (
 	}
 
 	queue struct {
-		logger     Logger
+		logger     amqp.Logger
 		queueName  string
 		connection connection.Connection
 		ctx        context.Context
@@ -32,20 +30,14 @@ type (
 func newQueue(
 	base context.Context,
 	queueName string,
-	logger Logger,
+	logger amqp.Logger,
 	cfg *QueueConfig,
-	connectionParams *connection.Config,
+	conn connection.Connection,
 	handler RawHandler,
 ) (*queue, error) {
 	ctx, cancel := context.WithCancel(base)
 
 	wg := &sync.WaitGroup{}
-
-	conn, err := connection.New(connectionParams)
-	if err != nil {
-		cancel()
-		return nil, err
-	}
 
 	queue := &queue{
 		queueName:  queueName,

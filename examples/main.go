@@ -16,11 +16,12 @@ type Message struct {
 }
 
 func (m Message) GetQueueName() string {
-	return "test"
+	return "testing_queue"
 }
 
 func handler(ctx context.Context, msg Message) error {
 	fmt.Println("Message received:", msg.Name)
+
 	return nil
 }
 
@@ -37,28 +38,33 @@ func main() {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt)
 
-	c := consumer.New(ctx)
+	connConfig := &connection.Config{
+		Host:              "127.0.0.1",
+		Port:              5672,
+		User:              "nano",
+		Password:          "admin",
+		Vhost:             "/",
+		ConnectionName:    "go-amqp",
+		ReconnectRetry:    10,
+		ReconnectInterval: 1 * time.Second,
+		Channels:          1000,
+	}
 
-	err := consumer.AddListenerFunc(c, handler,
-		consumer.WithQueueName("test"),
+	pool, err := connection.NewPool(10, connConfig)
+
+	if err != nil {
+		panic(err)
+	}
+
+	c, err := consumer.New(ctx, pool, handler,
 		consumer.WithLogger(&logger{}),
-		consumer.WithConnectionConfig(connection.Config{
-			Host:              "127.0.0.1",
-			Port:              5672,
-			User:              "guest",
-			Password:          "guest",
-			Vhost:             "/",
-			ConnectionName:    "go-amqp",
-			ReconnectRetry:    10,
-			ReconnectInterval: 1 * time.Second,
-			Channels:          1000,
-		}),
 		consumer.WithQueueConfig(consumer.QueueConfig{
 			ConnectionNamePrefix: "go-amqp",
 			Workers:              1,
 			PrefetchCount:        128,
 		}),
 	)
+
 	if err != nil {
 		panic(err)
 	}
@@ -69,6 +75,10 @@ func main() {
 
 	<-sig
 	if err := c.Close(); err != nil {
+		panic(err)
+	}
+
+	if err := pool.Close(); err != nil {
 		panic(err)
 	}
 }

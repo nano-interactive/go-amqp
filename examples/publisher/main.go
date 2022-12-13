@@ -2,57 +2,65 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"github.com/nano-interactive/go-amqp/connection"
-	"github.com/rabbitmq/amqp091-go"
+	"github.com/nano-interactive/go-amqp/publisher"
 	"time"
 )
 
-func mustPass[T any](data T, err error) T {
-	if err != nil {
-		panic(err)
-	}
-	return data
+type logger struct{}
+
+func (d logger) Error(msg string, args ...any) {
+	fmt.Printf(msg+"\n", args...)
+}
+
+type Message struct {
+	Name string `json:"name"`
+}
+
+func (m Message) GetExchangeName() string {
+	return "test"
+}
+
+func (m Message) GetExchangeType() publisher.ExchangeType {
+	return publisher.ExchangeTypeFanout
 }
 
 func main() {
-	conn := mustPass(connection.New(&connection.Config{
+	connConfig := &connection.Config{
 		Host:              "127.0.0.1",
 		Port:              5672,
-		User:              "guest",
-		Password:          "guest",
+		User:              "nano",
+		Password:          "admin",
 		Vhost:             "/",
 		ConnectionName:    "go-amqp",
 		ReconnectRetry:    10,
 		ReconnectInterval: 1 * time.Second,
 		Channels:          1000,
-	}))
-
-	channel := mustPass(conn.RawConnection().Channel())
-
-	err := channel.ExchangeDeclare("test", amqp091.ExchangeFanout, true, false, false, false, nil)
-	if err != nil {
-		panic(err)
 	}
 
-	_ = mustPass(channel.QueueDeclare("test", true, false, false, false, nil))
-
-	err = channel.QueueBind("test", "", "test", false, nil)
+	pool, err := connection.NewPool(10, connConfig)
 
 	if err != nil {
 		panic(err)
 	}
 
-	message := []byte(`{"name": "test"}`)
+	pub, err := publisher.New[Message](
+		context.Background(),
+		pool,
+		publisher.WithLogger[Message](&logger{}),
+	)
 
-	for i := 0; i < 10_000_000; i++ {
-		err = channel.PublishWithContext(
-			context.Background(),
-			"test",
-			"", false, false, amqp091.Publishing{
-				ContentType: "application/json",
-				Body:        message,
-			})
+	if err != nil {
+		panic(err)
+	}
 
+	message := Message{
+		Name: "Dusan",
+	}
+
+	for i := 0; i < 100_000; i++ {
+		err := pub.Publish(context.Background(), message)
 		if err != nil {
 			panic(err)
 		}

@@ -1,41 +1,51 @@
 package publisher
 
 import (
-	"github.com/nano-interactive/go-amqp/connection"
+	"github.com/nano-interactive/go-amqp"
 	"github.com/nano-interactive/go-amqp/serializer"
+	"time"
 )
 
 type (
-	PublisherConfig[T Message] struct {
-		connectionConfig connection.Config
-		serializer       serializer.Serializer[T]
-		exchangeName     string
-		exchangeType     ExchangeType
+	Config[T Message] struct {
+		serializer        serializer.Serializer[T]
+		logger            amqp.Logger
+		connectionTimeout time.Duration
+		publishCapacity   int
+		publishers        int
 	}
 
-	PublisherOption[T Message] func(*PublisherConfig[T])
+	Option[T Message] func(*Config[T])
 )
 
-func WithExchangeName[T Message](exchangeName string) PublisherOption[T] {
-	return func(p *PublisherConfig[T]) {
-		p.exchangeName = exchangeName
+func WithConnectionTimeout[T Message](timeout time.Duration) Option[T] {
+	return func(c *Config[T]) {
+		c.connectionTimeout = timeout
 	}
 }
 
-func WithExchangeType[T Message](exchangeType ExchangeType) PublisherOption[T] {
-	return func(p *PublisherConfig[T]) {
-		p.exchangeType = exchangeType
-	}
-}
-
-func WithConnectionConfig[T Message](cfg connection.Config) PublisherOption[T] {
-	return func(p *PublisherConfig[T]) {
-		p.connectionConfig = cfg
-	}
-}
-
-func WithSerializer[T Message](ser serializer.Serializer[T]) PublisherOption[T] {
-	return func(p *PublisherConfig[T]) {
+func WithSerializer[T Message](ser serializer.Serializer[T]) Option[T] {
+	return func(p *Config[T]) {
 		p.serializer = ser
+	}
+}
+
+func WithPublishCapacity[T Message](capacity int) Option[T] {
+	return func(p *Config[T]) {
+		p.publishCapacity = capacity
+	}
+}
+
+func WithPublishers[T Message](publishers int) Option[T] {
+	return func(p *Config[T]) {
+		p.publishers = publishers
+	}
+}
+
+func WithLogger[T Message](logger amqp.Logger) Option[T] {
+	return func(c *Config[T]) {
+		if logger != nil {
+			c.logger = logger
+		}
 	}
 }

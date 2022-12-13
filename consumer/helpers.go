@@ -2,6 +2,7 @@ package consumer
 
 import (
 	"context"
+	"github.com/nano-interactive/go-amqp"
 	"sync"
 
 	"github.com/rabbitmq/amqp091-go"
@@ -13,7 +14,7 @@ func listener(
 	channel *amqp091.Channel,
 	config *QueueConfig,
 	handler RawHandler,
-	logger Logger,
+	logger amqp.Logger,
 	queueName string,
 ) {
 	defer wg.Done()
