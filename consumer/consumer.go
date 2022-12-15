@@ -21,7 +21,7 @@ type (
 	}
 )
 
-func NewRaw[T Message](ctx context.Context, pool *connection.Pool, h RawHandler, options ...Option) (*Consumer[T], error) {
+func NewRaw[T Message](ctx context.Context, conn connection.Connection, h RawHandler, options ...Option) (*Consumer[T], error) {
 	var l amqp.Logger = &amqp.EmptyLogger{}
 
 	opt := Config{
@@ -35,12 +35,6 @@ func NewRaw[T Message](ctx context.Context, pool *connection.Pool, h RawHandler,
 
 	for _, o := range options {
 		o(&opt)
-	}
-
-	conn, err := pool.Get(ctx)
-
-	if err != nil {
-		return nil, err
 	}
 
 	var msg T
@@ -64,23 +58,23 @@ func NewRaw[T Message](ctx context.Context, pool *connection.Pool, h RawHandler,
 	}, nil
 }
 
-func NewRawFunc[T Message](ctx context.Context, pool *connection.Pool, h RawHandlerFunc, options ...Option) (*Consumer[T], error) {
-	return NewRaw[T](ctx, pool, h, options...)
+func NewRawFunc[T Message](ctx context.Context, conn connection.Connection, h RawHandlerFunc, options ...Option) (*Consumer[T], error) {
+	return NewRaw[T](ctx, conn, h, options...)
 }
 
-func New[T Message](ctx context.Context, pool *connection.Pool, h HandlerFunc[T], options ...Option) (*Consumer[T], error) {
+func New[T Message](ctx context.Context, conn connection.Connection, h HandlerFunc[T], options ...Option) (*Consumer[T], error) {
 	var msg T
 
-	return NewRaw[T](ctx, pool, &handler[T]{
+	return NewRaw[T](ctx, conn, &handler[T]{
 		handler:   h,
 		queueName: msg.GetQueueName(),
 	}, options...)
 }
 
-func NewHandler[T Message](ctx context.Context, pool *connection.Pool, h Handler[T], options ...Option) (*Consumer[T], error) {
+func NewHandler[T Message](ctx context.Context, conn connection.Connection, h Handler[T], options ...Option) (*Consumer[T], error) {
 	var msg T
 
-	return NewRaw[T](ctx, pool, &handler[T]{
+	return NewRaw[T](ctx, conn, &handler[T]{
 		queueName: msg.GetQueueName(),
 		handler:   h,
 	}, options...)

@@ -50,7 +50,7 @@ func main() {
 		Channels:          1000,
 	}
 
-	pool, err := connection.NewPool(10, connConfig)
+	pool, err := connection.New(connConfig)
 
 	if err != nil {
 		panic(err)

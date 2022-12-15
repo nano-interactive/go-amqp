@@ -39,18 +39,19 @@ func main() {
 		Channels:          1000,
 	}
 
-	pool, err := connection.NewPool(10, connConfig)
+	conn, err := connection.New(connConfig)
 
 	if err != nil {
 		panic(err)
 	}
 
-	conn, _ := pool.Get(context.Background())
 
 	pub, err := publisher.New[Message](
 		context.Background(),
 		conn,
 		publisher.WithLogger[Message](&logger{}),
+		publisher.WithBufferedMessages[Message](1000),
+		publisher.WithChannels[Message](2),
 	)
 
 	if err != nil {
@@ -61,7 +62,7 @@ func main() {
 		Name: "Dusan",
 	}
 
-	for i := 0; i < 100_000; i++ {
+	for i := 0; i < 1_000_000; i++ {
 		err := pub.Publish(context.Background(), message)
 		if err != nil {
 			panic(err)

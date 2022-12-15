@@ -2,7 +2,6 @@ package publisher
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -25,7 +24,7 @@ type (
 		wg         *sync.WaitGroup
 		conn       connection.Connection
 		serializer serializer.Serializer[T]
-		counter    atomic.Uint64
+		index      atomic.Uint64
 		publish    []chan amqp091.Publishing
 	}
 )
@@ -85,8 +84,8 @@ func New[T Message](ctx context.Context, conn connection.Connection, options ...
 				close(publish)
 
 				for pub := range publish {
-					// TODO: Handle the error
-					ch.PublishWithDeferredConfirmWithContext(
+					// Best we can do, log the error
+					_, _ = ch.PublishWithDeferredConfirmWithContext(
 						ctx,
 						name,
 						"",
@@ -169,20 +168,15 @@ func (p *Publisher[T]) Publish(ctx context.Context, msg T) error {
 		Body:         body,
 	}
 
-	publish := p.publish[p.counter.Add(1)%uint64(len(p.publish))]
+	publish := p.publish[p.index.Add(1)%uint64(len(p.publish))]
 
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
 	case publish <- publishing:
-		fmt.Println("Published")
+		// TODO: Try to handler the error
+		return nil
 	}
-
-	// FIXME: Listening on err channel might not be good
-	// FIXME: since this method can be used from multiple goroutines
-	// FIXME: and error can be from transaction before and
-	// FIXME: not from the current published message
-	return nil
 }
 
 func (p *Publisher[T]) Close() error {
