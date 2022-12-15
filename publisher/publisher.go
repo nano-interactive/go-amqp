@@ -2,14 +2,16 @@ package publisher
 
 import (
 	"context"
-	"errors"
-	"github.com/nano-interactive/go-amqp"
+	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/rabbitmq/amqp091-go"
+
+	"github.com/nano-interactive/go-amqp"
 	"github.com/nano-interactive/go-amqp/connection"
 	"github.com/nano-interactive/go-amqp/serializer"
-	"github.com/rabbitmq/amqp091-go"
 )
 
 type (
@@ -19,23 +21,22 @@ type (
 	}
 
 	Publisher[T Message] struct {
-		errCh      chan error
-		publish    chan T
-		m          sync.RWMutex
-		pool       *connection.Pool
+		cancel     context.CancelFunc
+		wg         *sync.WaitGroup
+		conn       connection.Connection
 		serializer serializer.Serializer[T]
-		channels   []*amqp091.Channel
-		logger     amqp.Logger
+		counter    atomic.Uint64
+		publish    []chan amqp091.Publishing
 	}
 )
 
-func New[T Message](ctx context.Context, pool *connection.Pool, options ...Option[T]) (*Publisher[T], error) {
+func New[T Message](ctx context.Context, conn connection.Connection, options ...Option[T]) (*Publisher[T], error) {
 	cfg := Config[T]{
 		serializer:        serializer.JsonSerializer[T]{},
 		logger:            &amqp.EmptyLogger{},
 		connectionTimeout: 1 * time.Second,
 		publishers:        1,
-		publishCapacity:   128,
+		messageBuffering:  1,
 	}
 
 	var msg T
@@ -44,79 +45,117 @@ func New[T Message](ctx context.Context, pool *connection.Pool, options ...Optio
 		option(&cfg)
 	}
 
-	newCtx, cancel := context.WithTimeout(ctx, cfg.connectionTimeout)
-	defer cancel()
+	publishers := make([]chan amqp091.Publishing, 0, cfg.publishers)
+	errChs := make([]chan error, 0, cfg.publishers)
 
-	conn, err := pool.Get(newCtx)
+	setupErrChs := make([]chan error, 0, cfg.publishers)
+	name := msg.GetExchangeName()
 
-	if err != nil {
+	wg := &sync.WaitGroup{}
+	wg.Add(cfg.publishers)
+	newCtx, cancel := context.WithCancel(ctx)
+
+	for i := 0; i < cfg.publishers; i++ {
+		setupErrCh := make(chan error, 1)
+		setupErrChs = append(setupErrChs, setupErrCh)
+
+		publish := make(chan amqp091.Publishing, cfg.messageBuffering)
+		publishers = append(publishers, publish)
+		//errCh := make(chan error, cfg.messageBuffering)
+		//errChs = append(errChs, errCh)
+
+		go func(setupErr chan<- error) {
+			ch, err := conn.RawConnection().Channel()
+			if err != nil {
+				setupErr <- err
+				return
+			}
+
+			err = ch.ExchangeDeclare(
+				msg.GetExchangeName(),
+				msg.GetExchangeType().String(),
+				true,
+				false,
+				false,
+				false,
+				nil,
+			)
+
+			defer func() {
+				close(publish)
+
+				for pub := range publish {
+					// TODO: Handle the error
+					ch.PublishWithDeferredConfirmWithContext(
+						ctx,
+						name,
+						"",
+						true,
+						false,
+						pub,
+					)
+				}
+
+				if !ch.IsClosed() {
+					_ = ch.Close()
+				}
+
+				wg.Done()
+			}()
+
+			close(setupErr)
+
+			for {
+				select {
+				case <-newCtx.Done():
+					return
+				case pub := <-publish:
+					_, err := ch.PublishWithDeferredConfirmWithContext(
+						newCtx,
+						name,
+						"",
+						true,
+						false,
+						pub,
+					)
+
+					if err != nil {
+						//errCh <- err
+						continue
+					}
+
+					//errCh <- nil
+				}
+			}
+		}(setupErrCh)
+	}
+
+	if err := mergeErrors(setupErrChs); err != nil {
+		for _, errCh := range errChs {
+			close(errCh)
+		}
+
+		for _, publisher := range publishers {
+			close(publisher)
+		}
+
+		_ = conn.Close()
+
+		cancel()
+		wg.Wait()
 		return nil, err
 	}
 
-	defer pool.Release(conn)
-
-	ch, err := conn.RawConnection().Channel()
-	if err != nil {
-		return nil, err
-	}
-
-	if err := ch.Confirm(false); err != nil {
-		return nil, err
-	}
-
-	publisher := &Publisher[T]{
-		pool:       pool,
+	return &Publisher[T]{
+		cancel:     cancel,
+		wg:         wg,
+		conn:       conn,
 		serializer: cfg.serializer,
-		logger:     cfg.logger,
-		channels:   make([]*amqp091.Channel, 0, 100),
-		m:          sync.RWMutex{},
-		errCh:      make(chan error, 1),
-		publish:    make(chan T, 1000),
-	}
-
-	newErrCh := ch.NotifyClose(make(chan *amqp091.Error, 1))
-	go recreate(ctx, publisher, cfg, pool, newErrCh)
-
-	//ret := make(chan amqp091.Return)
-
-	//ch.NotifyReturn(ret)
-	//
-	//go func() {
-	//	for val := range ret {
-	//		fmt.Printf("Returned: %s\n", string(val.Body))
-	//	}
-	//}()
-
-	err = ch.ExchangeDeclare(
-		msg.GetExchangeName(),
-		msg.GetExchangeType().String(),
-		true,
-		false,
-		false,
-		false,
-		nil,
-	)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return publisher, nil
+		publish:    publishers,
+	}, nil
 }
 
 func (p *Publisher[T]) Publish(ctx context.Context, msg T) error {
-	select {
-	case err, more := <-p.errCh:
-		if !more {
-			return errors.New("amqp -> channel closed")
-		}
-		return err
-	default:
-		// Continue -> no error
-	}
-
-	p.m.RLock()
-	defer p.m.RUnlock()
 	body, err := p.serializer.Marshal(msg)
 
 	if err != nil {
@@ -130,34 +169,42 @@ func (p *Publisher[T]) Publish(ctx context.Context, msg T) error {
 		Body:         body,
 	}
 
-	name := msg.GetExchangeName()
+	publish := p.publish[p.counter.Add(1)%uint64(len(p.publish))]
 
-	confirm, err := p.channel.PublishWithDeferredConfirmWithContext(
-		ctx,
-		name,
-		"",
-		true,
-		false,
-		publishing,
-	)
-
-	if err != nil {
-		return err
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case publish <- publishing:
+		fmt.Println("Published")
 	}
 
-	if !confirm.Wait() {
-		return errors.New("server not confirmed the message")
-	}
-
+	// FIXME: Listening on err channel might not be good
+	// FIXME: since this method can be used from multiple goroutines
+	// FIXME: and error can be from transaction before and
+	// FIXME: not from the current published message
 	return nil
 }
 
 func (p *Publisher[T]) Close() error {
-	close(p.errCh)
+	p.cancel()
+	p.wg.Wait()
+	return p.conn.Close()
+}
 
-	if !p.channel.IsClosed() {
-		return p.channel.Close()
+func mergeErrors(errs []chan error) error {
+	var wg sync.WaitGroup
+	wg.Add(len(errs))
+	out := make(chan error, len(errs))
+	for _, setupErr := range errs {
+		go func(wg *sync.WaitGroup, setupErr chan error) {
+			defer wg.Done()
+			for err := range setupErr {
+				out <- err
+			}
+		}(&wg, setupErr)
 	}
 
-	return nil
+	wg.Wait()
+	close(out)
+	return <-out
 }

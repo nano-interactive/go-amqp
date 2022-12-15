@@ -45,9 +45,11 @@ func main() {
 		panic(err)
 	}
 
+	conn, _ := pool.Get(context.Background())
+
 	pub, err := publisher.New[Message](
 		context.Background(),
-		pool,
+		conn,
 		publisher.WithLogger[Message](&logger{}),
 	)
 
@@ -64,5 +66,10 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
+	}
+
+	err = pub.Close()
+	if err != nil {
+		panic(err)
 	}
 }
