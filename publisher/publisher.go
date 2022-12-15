@@ -19,13 +19,18 @@ type (
 		GetExchangeType() ExchangeType
 	}
 
+	publishing struct {
+		amqp091.Publishing
+		errCb func(error)
+	}
+
 	Publisher[T Message] struct {
 		cancel     context.CancelFunc
 		wg         *sync.WaitGroup
 		conn       connection.Connection
 		serializer serializer.Serializer[T]
 		index      atomic.Uint64
-		publish    []chan amqp091.Publishing
+		publish    []chan publishing
 	}
 )
 
@@ -44,7 +49,7 @@ func New[T Message](ctx context.Context, conn connection.Connection, options ...
 		option(&cfg)
 	}
 
-	publishers := make([]chan amqp091.Publishing, 0, cfg.publishers)
+	publishers := make([]chan publishing, 0, cfg.publishers)
 	errChs := make([]chan error, 0, cfg.publishers)
 
 	setupErrChs := make([]chan error, 0, cfg.publishers)
@@ -58,7 +63,7 @@ func New[T Message](ctx context.Context, conn connection.Connection, options ...
 		setupErrCh := make(chan error, 1)
 		setupErrChs = append(setupErrChs, setupErrCh)
 
-		publish := make(chan amqp091.Publishing, cfg.messageBuffering)
+		publish := make(chan publishing, cfg.messageBuffering)
 		publishers = append(publishers, publish)
 		//errCh := make(chan error, cfg.messageBuffering)
 		//errChs = append(errChs, errCh)
@@ -84,15 +89,18 @@ func New[T Message](ctx context.Context, conn connection.Connection, options ...
 				close(publish)
 
 				for pub := range publish {
-					// Best we can do, log the error
-					_, _ = ch.PublishWithDeferredConfirmWithContext(
+					_, err = ch.PublishWithDeferredConfirmWithContext(
 						ctx,
 						name,
 						"",
 						true,
 						false,
-						pub,
+						pub.Publishing,
 					)
+
+					if err != nil && pub.errCb != nil {
+						pub.errCb(err)
+					}
 				}
 
 				if !ch.IsClosed() {
@@ -115,15 +123,13 @@ func New[T Message](ctx context.Context, conn connection.Connection, options ...
 						"",
 						true,
 						false,
-						pub,
+						pub.Publishing,
 					)
 
-					if err != nil {
-						//errCh <- err
+					if err != nil && pub.errCb != nil {
+						pub.errCb(err)
 						continue
 					}
-
-					//errCh <- nil
 				}
 			}
 		}(setupErrCh)
@@ -154,27 +160,34 @@ func New[T Message](ctx context.Context, conn connection.Connection, options ...
 	}, nil
 }
 
-func (p *Publisher[T]) Publish(ctx context.Context, msg T) error {
+func (p *Publisher[T]) Publish(ctx context.Context, msg T, errorCallback ...func(error)) error {
 	body, err := p.serializer.Marshal(msg)
 
 	if err != nil {
 		return err
 	}
 
-	publishing := amqp091.Publishing{
+	publish := p.publish[p.index.Add(1)%uint64(len(p.publish))]
+
+	var errCb func(error)
+
+	if len(errorCallback) > 0 {
+		errCb = errorCallback[0]
+	}
+
+	pub := publishing{amqp091.Publishing{
 		ContentType:  p.serializer.GetContentType(),
 		DeliveryMode: amqp091.Persistent,
 		Timestamp:    time.Now(),
 		Body:         body,
+	},
+		errCb,
 	}
-
-	publish := p.publish[p.index.Add(1)%uint64(len(p.publish))]
 
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case publish <- publishing:
-		// TODO: Try to handler the error
+	case publish <- pub:
 		return nil
 	}
 }
