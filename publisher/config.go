@@ -11,7 +11,6 @@ type (
 		serializer        serializer.Serializer[T]
 		logger            amqp.Logger
 		connectionTimeout time.Duration
-		publishers        int
 		messageBuffering  int
 	}
 
@@ -27,12 +26,6 @@ func WithConnectionTimeout[T Message](timeout time.Duration) Option[T] {
 func WithSerializer[T Message](ser serializer.Serializer[T]) Option[T] {
 	return func(p *Config[T]) {
 		p.serializer = ser
-	}
-}
-
-func WithChannels[T Message](capacity int) Option[T] {
-	return func(p *Config[T]) {
-		p.publishers = capacity
 	}
 }
 

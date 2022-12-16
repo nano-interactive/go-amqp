@@ -45,13 +45,11 @@ func main() {
 		panic(err)
 	}
 
-
 	pub, err := publisher.New[Message](
 		context.Background(),
 		conn,
 		publisher.WithLogger[Message](&logger{}),
 		publisher.WithBufferedMessages[Message](1000),
-		publisher.WithChannels[Message](2),
 	)
 
 	if err != nil {

@@ -2,6 +2,7 @@ package publisher
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -26,11 +27,12 @@ type (
 
 	Publisher[T Message] struct {
 		cancel     context.CancelFunc
+		ready      *atomic.Bool
 		wg         *sync.WaitGroup
 		conn       connection.Connection
 		serializer serializer.Serializer[T]
-		index      atomic.Uint64
-		publish    []chan publishing
+		publish    chan publishing
+		watchDog   chan struct{}
 	}
 )
 
@@ -39,135 +41,56 @@ func New[T Message](ctx context.Context, conn connection.Connection, options ...
 		serializer:        serializer.JsonSerializer[T]{},
 		logger:            &amqp.EmptyLogger{},
 		connectionTimeout: 1 * time.Second,
-		publishers:        1,
 		messageBuffering:  1,
 	}
-
-	var msg T
 
 	for _, option := range options {
 		option(&cfg)
 	}
 
-	publishers := make([]chan publishing, 0, cfg.publishers)
-	errChs := make([]chan error, 0, cfg.publishers)
+	publish := make(chan publishing, cfg.messageBuffering)
 
-	setupErrChs := make([]chan error, 0, cfg.publishers)
-	name := msg.GetExchangeName()
+	ready := &atomic.Bool{}
+	ready.Store(false)
 
 	wg := &sync.WaitGroup{}
-	wg.Add(cfg.publishers)
+	wg.Add(2)
 	newCtx, cancel := context.WithCancel(ctx)
+	setupErrCh := make(chan error, 1)
+	workerExitCh := make(chan struct{})
+	go worker[T](newCtx, conn, wg, setupErrCh, publish, workerExitCh)
 
-	for i := 0; i < cfg.publishers; i++ {
-		setupErrCh := make(chan error, 1)
-		setupErrChs = append(setupErrChs, setupErrCh)
-
-		publish := make(chan publishing, cfg.messageBuffering)
-		publishers = append(publishers, publish)
-		//errCh := make(chan error, cfg.messageBuffering)
-		//errChs = append(errChs, errCh)
-
-		go func(setupErr chan<- error) {
-			ch, err := conn.RawConnection().Channel()
-			if err != nil {
-				setupErr <- err
-				return
-			}
-
-			err = ch.ExchangeDeclare(
-				msg.GetExchangeName(),
-				msg.GetExchangeType().String(),
-				true,
-				false,
-				false,
-				false,
-				nil,
-			)
-
-			defer func() {
-				close(publish)
-
-				for pub := range publish {
-					_, err = ch.PublishWithDeferredConfirmWithContext(
-						ctx,
-						name,
-						"",
-						true,
-						false,
-						pub.Publishing,
-					)
-
-					if err != nil && pub.errCb != nil {
-						pub.errCb(err)
-					}
-				}
-
-				if !ch.IsClosed() {
-					_ = ch.Close()
-				}
-
-				wg.Done()
-			}()
-
-			close(setupErr)
-
-			for {
-				select {
-				case <-newCtx.Done():
-					return
-				case pub := <-publish:
-					_, err := ch.PublishWithDeferredConfirmWithContext(
-						newCtx,
-						name,
-						"",
-						true,
-						false,
-						pub.Publishing,
-					)
-
-					if err != nil && pub.errCb != nil {
-						pub.errCb(err)
-						continue
-					}
-				}
-			}
-		}(setupErrCh)
-	}
-
-	if err := mergeErrors(setupErrChs); err != nil {
-		for _, errCh := range errChs {
-			close(errCh)
-		}
-
-		for _, publisher := range publishers {
-			close(publisher)
-		}
-
+	if err := <-setupErrCh; err != nil {
 		_ = conn.Close()
-
 		cancel()
 		wg.Wait()
 		return nil, err
 	}
 
+	ready.Store(true)
+	go watchdog[T](newCtx, conn, wg, publish, workerExitCh, ready)
+
 	return &Publisher[T]{
 		cancel:     cancel,
+		ready:      ready,
 		wg:         wg,
 		conn:       conn,
 		serializer: cfg.serializer,
-		publish:    publishers,
+		publish:    publish,
+		watchDog:   workerExitCh,
 	}, nil
 }
 
 func (p *Publisher[T]) Publish(ctx context.Context, msg T, errorCallback ...func(error)) error {
+	if !p.ready.Load() {
+		return errors.New("channel is not ready... maybe restarting")
+	}
+
 	body, err := p.serializer.Marshal(msg)
 
 	if err != nil {
 		return err
 	}
-
-	publish := p.publish[p.index.Add(1)%uint64(len(p.publish))]
 
 	var errCb func(error)
 
@@ -175,19 +98,20 @@ func (p *Publisher[T]) Publish(ctx context.Context, msg T, errorCallback ...func
 		errCb = errorCallback[0]
 	}
 
-	pub := publishing{amqp091.Publishing{
-		ContentType:  p.serializer.GetContentType(),
-		DeliveryMode: amqp091.Persistent,
-		Timestamp:    time.Now(),
-		Body:         body,
-	},
-		errCb,
+	pub := publishing{
+		Publishing: amqp091.Publishing{
+			ContentType:  p.serializer.GetContentType(),
+			DeliveryMode: amqp091.Persistent,
+			Timestamp:    time.Now(),
+			Body:         body,
+		},
+		errCb: errCb,
 	}
 
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case publish <- pub:
+	case p.publish <- pub:
 		return nil
 	}
 }
@@ -195,23 +119,6 @@ func (p *Publisher[T]) Publish(ctx context.Context, msg T, errorCallback ...func
 func (p *Publisher[T]) Close() error {
 	p.cancel()
 	p.wg.Wait()
+	close(p.watchDog)
 	return p.conn.Close()
-}
-
-func mergeErrors(errs []chan error) error {
-	var wg sync.WaitGroup
-	wg.Add(len(errs))
-	out := make(chan error, len(errs))
-	for _, setupErr := range errs {
-		go func(wg *sync.WaitGroup, setupErr chan error) {
-			defer wg.Done()
-			for err := range setupErr {
-				out <- err
-			}
-		}(&wg, setupErr)
-	}
-
-	wg.Wait()
-	close(out)
-	return <-out
 }
