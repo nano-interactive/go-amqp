@@ -24,6 +24,7 @@ type (
 		cfg        *QueueConfig
 		wg         *sync.WaitGroup
 		handler    RawHandler
+		watchDog   chan struct{}
 	}
 )
 
@@ -48,6 +49,7 @@ func newQueue(
 		cfg:        cfg,
 		wg:         wg,
 		handler:    handler,
+		watchDog:   make(chan struct{}, cfg.Workers),
 	}
 
 	conn.SetOnReconnecting(func() error {
@@ -68,6 +70,8 @@ func newQueue(
 		queue.logger.Error("Error: %v", err)
 	})
 
+	go watchdog(ctx, conn, wg, queue.watchDog, queue)
+
 	return queue, nil
 }
 
@@ -86,6 +90,7 @@ func (q *queue) Listen() error {
 		return err
 	}
 
+	q.wg.Add(q.cfg.Workers + 1)
 	for i := 0; i < q.cfg.Workers; i++ {
 		channel, err := conn.Channel()
 		if err != nil {
@@ -96,8 +101,7 @@ func (q *queue) Listen() error {
 			return err
 		}
 
-		q.wg.Add(1)
-		go listener(q.ctx, q.wg, channel, q.cfg, q.handler, q.logger, q.queueName)
+		go listener(q.ctx, q.wg, channel, q.handler, q.logger, q.queueName, q.watchDog)
 	}
 
 	return nil
@@ -110,5 +114,8 @@ func (q *queue) closeHandlers() {
 
 func (q *queue) Close() error {
 	q.closeHandlers()
+	if q.watchDog != nil {
+		close(q.watchDog)
+	}
 	return q.connection.Close()
 }

@@ -2,9 +2,7 @@ package publisher
 
 import (
 	"context"
-	"errors"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/rabbitmq/amqp091-go"
@@ -27,7 +25,6 @@ type (
 
 	Publisher[T Message] struct {
 		cancel     context.CancelFunc
-		ready      *atomic.Bool
 		wg         *sync.WaitGroup
 		conn       connection.Connection
 		serializer serializer.Serializer[T]
@@ -50,9 +47,6 @@ func New[T Message](ctx context.Context, conn connection.Connection, options ...
 
 	publish := make(chan publishing, cfg.messageBuffering)
 
-	ready := &atomic.Bool{}
-	ready.Store(false)
-
 	wg := &sync.WaitGroup{}
 	wg.Add(2)
 	newCtx, cancel := context.WithCancel(ctx)
@@ -67,12 +61,10 @@ func New[T Message](ctx context.Context, conn connection.Connection, options ...
 		return nil, err
 	}
 
-	ready.Store(true)
-	go watchdog[T](newCtx, conn, wg, publish, workerExitCh, ready)
+	go watchdog[T](newCtx, conn, wg, publish, workerExitCh)
 
 	return &Publisher[T]{
 		cancel:     cancel,
-		ready:      ready,
 		wg:         wg,
 		conn:       conn,
 		serializer: cfg.serializer,
@@ -82,10 +74,6 @@ func New[T Message](ctx context.Context, conn connection.Connection, options ...
 }
 
 func (p *Publisher[T]) Publish(ctx context.Context, msg T, errorCallback ...func(error)) error {
-	if !p.ready.Load() {
-		return errors.New("channel is not ready... maybe restarting")
-	}
-
 	body, err := p.serializer.Marshal(msg)
 
 	if err != nil {

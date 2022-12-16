@@ -12,10 +12,10 @@ func listener(
 	ctx context.Context,
 	wg *sync.WaitGroup,
 	channel *amqp091.Channel,
-	config *QueueConfig,
 	handler RawHandler,
 	logger amqp.Logger,
 	queueName string,
+	workerExit chan struct{},
 ) {
 	defer wg.Done()
 
@@ -25,13 +25,13 @@ func listener(
 		return
 	}
 
-	// Extract to QueueConfig
-	//if err = channel.Qos(config.PrefetchCount, 0, false); err != nil {
-	//	logger.Error("Failed to set QoS: %v", err)
-	//	return
-	//}
-
 	defer func(channel *amqp091.Channel) {
+		err := ctx.Err()
+
+		if err != context.Canceled && err != context.DeadlineExceeded {
+			workerExit <- struct{}{}
+		}
+
 		if !channel.IsClosed() {
 			err := channel.Close()
 			if err != nil {
