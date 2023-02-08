@@ -1,9 +1,10 @@
 package publisher
 
 import (
+	"time"
+
 	"github.com/nano-interactive/go-amqp"
 	"github.com/nano-interactive/go-amqp/serializer"
-	"time"
 )
 
 type (

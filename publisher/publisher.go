@@ -2,6 +2,7 @@ package publisher
 
 import (
 	"context"
+	"io"
 	"sync"
 	"time"
 
@@ -21,6 +22,11 @@ type (
 	publishing struct {
 		amqp091.Publishing
 		errCb func(error)
+	}
+
+	Pub[T Message] interface {
+		io.Closer
+		Publish(ctx context.Context, msg T, errorCallback ...func(error)) error
 	}
 
 	Publisher[T Message] struct {
@@ -75,7 +81,6 @@ func New[T Message](ctx context.Context, conn connection.Connection, options ...
 
 func (p *Publisher[T]) Publish(ctx context.Context, msg T, errorCallback ...func(error)) error {
 	body, err := p.serializer.Marshal(msg)
-
 	if err != nil {
 		return err
 	}

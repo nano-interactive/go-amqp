@@ -51,7 +51,6 @@ func main() {
 	}
 
 	pool, err := connection.New(connConfig)
-
 	if err != nil {
 		panic(err)
 	}
@@ -64,7 +63,6 @@ func main() {
 			PrefetchCount:        128,
 		}),
 	)
-
 	if err != nil {
 		panic(err)
 	}

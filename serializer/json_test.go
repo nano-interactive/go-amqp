@@ -15,7 +15,7 @@ var serializer Serializer[message] = JsonSerializer[message]{}
 func TestSerializerSuccess(t *testing.T) {
 	// Arrange
 	assert := require.New(t)
-	data := message{ Name: "Test"}
+	data := message{Name: "Test"}
 
 	// Act
 	json, err := serializer.Marshal(data)
@@ -29,7 +29,7 @@ func TestSerializerSuccess(t *testing.T) {
 func TestSerializerEmpty(t *testing.T) {
 	// Arrange
 	assert := require.New(t)
-	data := message{ Name: ""}
+	data := message{Name: ""}
 
 	// Act
 	json, err := serializer.Marshal(data)

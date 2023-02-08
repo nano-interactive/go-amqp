@@ -2,6 +2,7 @@ package consumer
 
 import (
 	"context"
+	"io"
 
 	"go.uber.org/multierr"
 
@@ -12,6 +13,11 @@ import (
 type (
 	Message interface {
 		GetQueueName() string
+	}
+
+	Sub[T Message] interface {
+		io.Closer
+		Start() error
 	}
 
 	Consumer[T Message] struct {

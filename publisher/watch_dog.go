@@ -2,8 +2,9 @@ package publisher
 
 import (
 	"context"
-	"github.com/nano-interactive/go-amqp/connection"
 	"sync"
+
+	"github.com/nano-interactive/go-amqp/connection"
 )
 
 func watchdog[T Message](

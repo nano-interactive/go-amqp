@@ -16,7 +16,6 @@ func worker[T Message](
 	workerExit chan struct{},
 ) {
 	defer func() {
-
 	}()
 
 	var msg T

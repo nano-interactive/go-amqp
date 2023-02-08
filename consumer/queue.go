@@ -2,8 +2,9 @@ package consumer
 
 import (
 	"context"
-	"github.com/nano-interactive/go-amqp"
 	"sync"
+
+	"github.com/nano-interactive/go-amqp"
 
 	"github.com/nano-interactive/go-amqp/connection"
 )

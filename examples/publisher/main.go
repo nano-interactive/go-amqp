@@ -3,9 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/nano-interactive/go-amqp/connection"
 	"github.com/nano-interactive/go-amqp/publisher"
-	"time"
 )
 
 type logger struct{}
@@ -40,7 +41,6 @@ func main() {
 	}
 
 	conn, err := connection.New(connConfig)
-
 	if err != nil {
 		panic(err)
 	}
@@ -51,7 +51,6 @@ func main() {
 		publisher.WithLogger[Message](&logger{}),
 		publisher.WithBufferedMessages[Message](1000),
 	)
-
 	if err != nil {
 		panic(err)
 	}

@@ -6,7 +6,6 @@ type JsonSerializer[T any] struct{}
 
 func (j JsonSerializer[T]) Marshal(v T) ([]byte, error) {
 	data, err := json.Marshal(v)
-
 	if err != nil {
 		return nil, err
 	}
