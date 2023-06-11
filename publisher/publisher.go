@@ -3,7 +3,9 @@ package publisher
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"os"
 	"sync/atomic"
 	"time"
 
@@ -14,10 +16,17 @@ import (
 	"github.com/nano-interactive/go-amqp/serializer"
 )
 
+var ErrChannelNotReady = errors.New("publishing channel is not ready")
+
 type (
 	Message interface {
 		GetExchangeName() string
 		GetExchangeType() ExchangeType
+		GetRoutingKey() string
+	}
+
+	MessageRoutingKey interface {
+		RoutingKey() string
 	}
 
 	Pub[T Message] interface {
@@ -27,74 +36,89 @@ type (
 
 	Publisher[T Message] struct {
 		conn       connection.Connection
-		ch         *atomic.Pointer[amqp091.Channel]
+		ch         atomic.Pointer[amqp091.Channel]
 		serializer serializer.Serializer[T]
-		ready      *atomic.Bool
+		ready      atomic.Bool
 	}
 )
 
-func New[T Message](ctx context.Context, conn connection.Connection, options ...Option[T]) (*Publisher[T], error) {
-	cfg := Config[T]{
-		serializer:        serializer.JsonSerializer[T]{},
-		logger:            amqp.EmptyLogger{},
-		connectionTimeout: 1 * time.Second,
-		messageBuffering:  1,
-	}
-
-	for _, option := range options {
-		option(&cfg)
-	}
-
+func (publisher *Publisher[T]) onConnectionReady(cfg Config[T]) connection.OnConnectionReady {
 	var msg T
-
 	exchangeName := msg.GetExchangeName()
+	exchangeType := msg.GetExchangeType().String()
 
-	chOrigin, err := conn.RawConnection().Channel()
+	return func(ctx context.Context, connection *amqp091.Connection) error {
+		publisher.ready.Store(false)
+		chOrigin, notifyClose, err := newChannel(
+			connection,
+			exchangeName,
+			exchangeType,
+			cfg.logger,
+		)
+		if err != nil {
+			return err
+		}
+
+		go func() {
+			errCh := make(chan error)
+			defer close(errCh)
+
+			for notifyClose != nil {
+				select {
+				case <-ctx.Done():
+					return
+				case <-errCh:
+					publisher.ready.Store(false)
+
+					chOrigin, notifyClose, err = newChannel(
+						connection,
+						exchangeName,
+						msg.GetExchangeType().String(),
+						cfg.logger,
+					)
+
+					if err != nil {
+						errCh <- err
+						continue
+					}
+
+					publisher.ch.Store(chOrigin)
+					publisher.ready.Store(true)
+
+				case err, ok := <-notifyClose:
+					if !ok {
+						notifyClose = nil
+						return
+					}
+
+					if errors.Is(err, amqp091.ErrClosed) && err.Code == amqp091.ChannelError {
+						errCh <- err
+					}
+				}
+			}
+		}()
+
+		publisher.ch.Store(chOrigin)
+		publisher.ready.Store(true)
+
+		return nil
+	}
+}
+
+func newChannel(
+	connection *amqp091.Connection,
+	exchangeName, exchangeType string,
+	logger amqp.Logger,
+) (*amqp091.Channel, chan *amqp091.Error, error) {
+	ch, err := connection.Channel()
 	if err != nil {
-		cfg.logger.Error("Failed to get channel: %v", err)
-		return nil, err
+		logger.Error("Failed to get channel: %v", err)
+		return nil, nil, err
 	}
 
-	ch := &atomic.Pointer[amqp091.Channel]{}
-	ch.Store(chOrigin)
-
-	notifyClose := make(chan *amqp091.Error)
-	chOrigin.NotifyClose(notifyClose)
-
-	ready := &atomic.Bool{}
-	ready.Store(true)
-	go func() {
-		errCh := make(chan error, 1)
-		defer close(errCh)
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case err = <-errCh:
-				ready.Store(false)
-				chOrigin, err = conn.RawConnection().Channel()
-
-				if err != nil {
-					cfg.logger.Error("Failed to get channel: %v", err)
-					errCh <- err
-					continue
-				}
-				notifyClose = chOrigin.NotifyClose(make(chan *amqp091.Error))
-				ch.Store(chOrigin)
-				ready.Store(true)
-			case err, ok := <-notifyClose:
-				if !ok {
-					return
-				}
-
-				errCh <- err
-			}
-		}
-	}()
-
-	err = chOrigin.ExchangeDeclare(
+	err = ch.ExchangeDeclare(
 		exchangeName,
-		msg.GetExchangeType().String(),
+		exchangeType,
 		true,
 		false,
 		false,
@@ -103,21 +127,56 @@ func New[T Message](ctx context.Context, conn connection.Connection, options ...
 	)
 
 	if err != nil {
-		cfg.logger.Error("Failed to declare exchange: %s %v", exchangeName, err)
+		logger.Error("Failed to declare exchange: %s(%s) %v", exchangeName, exchangeType, err)
+		return nil, nil, err
+	}
+
+	notifyClose := ch.NotifyClose(make(chan *amqp091.Error))
+
+	return ch, notifyClose, nil
+}
+
+func New[T Message](options ...Option[T]) (*Publisher[T], error) {
+	cfg := Config[T]{
+		serializer:        serializer.JsonSerializer[T]{},
+		logger:            amqp.EmptyLogger{},
+		messageBuffering:  1,
+		connectionOptions: connection.DefaultConfig,
+		ctx:               context.Background(),
+		onError: func(err error) {
+			if errors.Is(err, connection.ErrRetriesExhausted) {
+				panic(err)
+			}
+
+			fmt.Fprintf(os.Stderr, "[ERROR]: An error has occurred! %v\n", err)
+		},
+	}
+
+	conn, err := connection.New(cfg.ctx, cfg.connectionOptions)
+	if err != nil {
 		return nil, err
 	}
 
-	return &Publisher[T]{
+	for _, option := range options {
+		option(&cfg)
+	}
+
+	publisher := &Publisher[T]{
 		conn:       conn,
-		ch:         ch,
 		serializer: cfg.serializer,
-		ready:      ready,
-	}, nil
+		ch:         atomic.Pointer[amqp091.Channel]{},
+		ready:      atomic.Bool{},
+	}
+
+	conn.OnConnectionReady(publisher.onConnectionReady(cfg))
+	conn.OnError(cfg.onError)
+
+	return publisher, nil
 }
 
 func (p *Publisher[T]) Publish(ctx context.Context, msg T) error {
 	if !p.ready.Load() {
-		return errors.New("publishing channel is not ready")
+		return ErrChannelNotReady
 	}
 
 	body, err := p.serializer.Marshal(msg)
@@ -125,35 +184,19 @@ func (p *Publisher[T]) Publish(ctx context.Context, msg T) error {
 		return err
 	}
 
-	exchange := msg.GetExchangeName()
-
-	for {
-		ch := p.ch.Load()
-
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		err = ch.PublishWithContext(
-			ctx,
-			exchange,
-			"",
-			true,
-			false,
-			amqp091.Publishing{
-				ContentType:  p.serializer.GetContentType(),
-				DeliveryMode: amqp091.Persistent,
-				Timestamp:    time.Now(),
-				Body:         body,
-			},
-		)
-
-		if err == nil {
-			return nil
-		}
-	}
+	return p.ch.Load().PublishWithContext(
+		ctx,
+		msg.GetExchangeName(),
+		msg.GetRoutingKey(),
+		true,
+		false,
+		amqp091.Publishing{
+			ContentType:  p.serializer.GetContentType(),
+			DeliveryMode: amqp091.Persistent,
+			Timestamp:    time.Now(),
+			Body:         body,
+		},
+	)
 }
 
 func (p *Publisher[T]) Close() error {

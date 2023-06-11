@@ -1,27 +1,31 @@
 package connection
 
-import "context"
+import (
+	"context"
+
+	"github.com/rabbitmq/amqp091-go"
+)
 
 type (
 	OnReconnectingFunc func(context.Context) error
-	OnReconnectFunc    func(context.Context) error
+	OnConnectionReady    func(context.Context, *amqp091.Connection) error
 	OnErrorFunc        func(error)
 )
 
 type Events struct {
-	onReconnecting OnReconnectingFunc
-	onReconnect    OnReconnectFunc
+	onBeforeConnectionInit OnReconnectingFunc
+	onConnectInit    OnConnectionReady
 	onError        OnErrorFunc
 }
 
-func (c *Events) SetOnReconnect(onReconnect OnReconnectFunc) {
-	c.onReconnect = onReconnect
+func (c *Events) OnConnectionReady(onReconnect OnConnectionReady) {
+	c.onConnectInit = onReconnect
 }
 
-func (c *Events) SetOnReconnecting(onReconnecting OnReconnectingFunc) {
-	c.onReconnecting = onReconnecting
+func (c *Events) OnBeforeConnectionReady(onReconnecting OnReconnectingFunc) {
+	c.onBeforeConnectionInit = onReconnecting
 }
 
-func (c *Events) SetOnError(onError OnErrorFunc) {
+func (c *Events) OnError(onError OnErrorFunc) {
 	c.onError = onError
 }

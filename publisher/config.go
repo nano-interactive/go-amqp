@@ -1,38 +1,53 @@
 package publisher
 
 import (
-	"time"
+	"context"
 
 	"github.com/nano-interactive/go-amqp"
+	"github.com/nano-interactive/go-amqp/connection"
 	"github.com/nano-interactive/go-amqp/serializer"
 )
 
 type (
 	Config[T Message] struct {
+		ctx               context.Context
 		serializer        serializer.Serializer[T]
 		logger            amqp.Logger
-		connectionTimeout time.Duration
+		onError           connection.OnErrorFunc
+		connectionOptions connection.Config
 		messageBuffering  int
 	}
 
 	Option[T Message] func(*Config[T])
 )
 
-func WithConnectionTimeout[T Message](timeout time.Duration) Option[T] {
+func WithSerializer[T Message](ser serializer.Serializer[T]) Option[T] {
 	return func(c *Config[T]) {
-		c.connectionTimeout = timeout
+		c.serializer = ser
 	}
 }
 
-func WithSerializer[T Message](ser serializer.Serializer[T]) Option[T] {
-	return func(p *Config[T]) {
-		p.serializer = ser
+func WithOnErrorFunc[T Message](onError connection.OnErrorFunc) Option[T] {
+	return func(c *Config[T]) {
+		c.onError = onError
+	}
+}
+
+func WithContext[T Message](ctx context.Context) Option[T] {
+	return func(c *Config[T]) {
+		c.ctx = ctx
+	}
+}
+
+func WithConnectionOptions[T Message](connectionOptions connection.Config) Option[T] {
+	return func(c *Config[T]) {
+		c.connectionOptions = connectionOptions
 	}
 }
 
 func WithBufferedMessages[T Message](capacity int) Option[T] {
-	return func(p *Config[T]) {
-		p.messageBuffering = capacity
+	return func(c *Config[T]) {
+		c.messageBuffering = capacity
 	}
 }
 

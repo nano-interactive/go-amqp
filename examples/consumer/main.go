@@ -42,7 +42,7 @@ func main() {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt)
 
-	connConfig := &connection.Config{
+	connConfig := connection.Config{
 		Host:              "127.0.0.1",
 		Port:              5672,
 		User:              "guest",
@@ -80,10 +80,6 @@ func main() {
 
 	<-sig
 	if err := c.Close(); err != nil {
-		panic(err)
-	}
-
-	if err := pool.Close(); err != nil {
 		panic(err)
 	}
 }

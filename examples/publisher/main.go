@@ -31,8 +31,13 @@ func (m Message) GetExchangeType() publisher.ExchangeType {
 	return publisher.ExchangeTypeFanout
 }
 
+func (m Message) GetRoutingKey() string {
+	return ""
+}
+
+
 func main() {
-	connConfig := &connection.Config{
+	connConfig := connection.Config{
 		Host:              "127.0.0.1",
 		Port:              5672,
 		User:              "guest",
@@ -46,14 +51,10 @@ func main() {
 
 	ctx := context.Background()
 
-	conn, err := connection.New(ctx, connConfig)
-	if err != nil {
-		panic(err)
-	}
 
 	pub, err := publisher.New[Message](
-		ctx,
-		conn,
+		publisher.WithContext[Message](ctx),
+		publisher.WithConnectionOptions[Message](connConfig),
 		publisher.WithLogger[Message](&logger{}),
 		publisher.WithBufferedMessages[Message](1000),
 	)

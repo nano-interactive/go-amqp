@@ -30,9 +30,10 @@ type (
 	Connection interface {
 		io.Closer
 		IsClosed() bool
-		SetOnReconnect(onReconnect OnReconnectFunc)
-		SetOnReconnecting(onReconnecting OnReconnectingFunc)
-		SetOnError(onReconnecting OnErrorFunc)
+
+		OnConnectionReady(onReconnect OnConnectionReady)
+		OnBeforeConnectionReady(onReconnecting OnReconnectingFunc)
+		OnError(onReconnecting OnErrorFunc)
 
 		RawConnection() *amqp091.Connection
 	}
@@ -59,15 +60,15 @@ type (
 	}
 )
 
-func New(ctx context.Context, config *Config) (Connection, error) {
+func New(ctx context.Context, config Config) (Connection, error) {
 	newCtx, cancel := context.WithCancel(ctx)
 	c := &connection{
-		Config: config,
+		Config: &config,
 		cancel: cancel,
 		Events: &Events{
-			onReconnecting: nil,
-			onReconnect:    nil,
-			onError:        nil,
+			onBeforeConnectionInit: nil,
+			onConnectInit:          nil,
+			onError:                nil,
 		},
 	}
 
@@ -79,11 +80,9 @@ func New(ctx context.Context, config *Config) (Connection, error) {
 }
 
 func shouldReconnect(amqpErr *amqp091.Error) bool {
-	return amqpErr.Code == amqp091.ConnectionForced ||
-		amqpErr.Code == amqp091.ResourceLocked ||
-		amqpErr.Code == amqp091.PreconditionFailed ||
-		amqpErr.Code == amqp091.ChannelError ||
-		amqpErr.Code == amqp091.ResourceError
+	return amqpErr.Code != amqp091.ConnectionForced ||
+		amqpErr.Code == amqp091.ResourceError ||
+		amqpErr.Code == amqp091.PreconditionFailed
 }
 
 func (c *connection) RawConnection() *amqp091.Connection {
@@ -105,51 +104,32 @@ func (c *connection) handleReconnect(ctx context.Context, connection *amqp091.Co
 				return
 			}
 
-			if c.closing.Load() {
+			if c.closing.Load() || !shouldReconnect(amqpErr) {
 				if err := c.connectionDispose(); err != nil && c.onError != nil {
 					c.onError(&OnConnectionCloseError{Err: err})
-					continue
 				}
 
 				return
 			}
 
-			if !shouldReconnect(amqpErr) {
-				return
-			}
-
-			if c.onReconnecting != nil {
-				if err := c.onReconnecting(ctx); err != nil && c.onError != nil {
-					c.onError(&OnReconnectingError{Err: err})
-					continue
+			if c.onBeforeConnectionInit != nil {
+				if err := c.onBeforeConnectionInit(ctx); err != nil && c.onError != nil {
+					c.onError(&OnBeforeConnectError{Err: err})
 				}
 			}
 
 			if err := c.connectionDispose(); err != nil && c.onError != nil {
 				c.onError(&OnConnectionCloseError{Err: err})
-				continue
 			}
 
-			var (
-				err error
-				i   int
-			)
+			var i int
 
 			for i = 0; i < c.ReconnectRetry; i++ {
-				if err = c.connect(ctx); err == nil && !c.closing.Load() && !c.conn.Load().IsClosed() {
-					if c.onReconnect != nil {
-						if err = c.onReconnect(ctx); err != nil && c.onError != nil {
-							c.onError(&OnReconnectError{Err: err})
-						}
-					}
-					break
+				if err := c.connect(ctx); err == nil {
+					return
 				}
 
 				time.Sleep(c.ReconnectInterval)
-			}
-
-			if c.onError != nil && err != nil {
-				c.onError(err)
 			}
 
 			if i >= c.ReconnectRetry {
@@ -160,17 +140,20 @@ func (c *connection) handleReconnect(ctx context.Context, connection *amqp091.Co
 }
 
 func (c *connection) connect(ctx context.Context) error {
+	// TODO Reuse properties to reduce allocations
+
 	properties := amqp091.NewConnectionProperties()
 	properties.SetClientConnectionName(c.ConnectionName)
 
 	config := amqp091.Config{
 		Vhost:      c.Vhost,
-		ChannelMax: 0,
+		ChannelMax: c.Channels,
 		Heartbeat:  1 * time.Second,
 		Properties: properties,
 		Dial:       amqp091.DefaultDial(10 * time.Second),
 	}
 
+	// TODO: reuse connection URI
 	connectionURI := fmt.Sprintf(
 		"amqp://%s:%s@%s:%d",
 		c.User,
@@ -181,15 +164,24 @@ func (c *connection) connect(ctx context.Context) error {
 
 	conn, err := amqp091.DialConfig(connectionURI, config)
 	if err != nil {
+		c.onError(&ConnectInitError{Err: err})
 		return err
 	}
 
-	c.closing.Store(false)
+	defer c.closing.Store(false)
 	c.conn.Store(conn)
 
-	go func() {
-		c.handleReconnect(ctx, conn)
-	}()
+	go c.handleReconnect(ctx, conn)
+
+	if c.onConnectInit != nil {
+		if err = c.onConnectInit(ctx, conn); err != nil {
+			if c.onError != nil {
+				c.onError(&ConnectInitError{Err: err})
+			}
+
+			return err
+		}
+	}
 
 	return nil
 }
@@ -198,11 +190,11 @@ func (c *connection) connectionDispose() error {
 	c.closing.Store(true)
 	conn := c.conn.Load()
 
-	if !conn.IsClosed() {
-		return conn.Close()
+	if conn.IsClosed() {
+		return nil
 	}
 
-	return nil
+	return conn.Close()
 }
 
 func (c *connection) Close() error {

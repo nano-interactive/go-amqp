@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/nano-interactive/go-amqp"
+	"github.com/rabbitmq/amqp091-go"
 
 	"github.com/nano-interactive/go-amqp/connection"
 )
@@ -46,24 +47,23 @@ func newQueue(
 		logger:     logger,
 		ctx:        ctx,
 		cancel:     cancel,
-		connection: conn,
 		cfg:        cfg,
 		handler:    handler,
 		watchDog:   make(chan struct{}, cfg.Workers),
 	}
 
-	conn.SetOnReconnecting(func(ctx context.Context) error {
+	conn.OnBeforeConnectionReady(func(ctx context.Context) error {
 		return queue.closeHandlers(ctx)
 	})
 
-	conn.SetOnReconnect(func(ctx context.Context) error {
+	conn.OnConnectionReady(func(ctx context.Context, connection *amqp091.Connection) error {
 		newCtx, cancel := context.WithCancel(base)
 		queue.ctx = newCtx
 		queue.cancel = cancel
 		return queue.Listen()
 	})
 
-	conn.SetOnError(errorCb)
+	conn.OnError(errorCb)
 
 	go watchdog(ctx, conn, &queue.wg, queue.watchDog, queue)
 
