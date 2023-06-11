@@ -12,7 +12,11 @@ import (
 type logger struct{}
 
 func (d logger) Error(msg string, args ...any) {
-	fmt.Printf(msg+"\n", args...)
+	fmt.Printf("[ERROR]: "+msg+"\n", args...)
+}
+
+func (d logger) Info(msg string, args ...any) {
+	fmt.Printf("[INFO]: " + msg+"\n", args...)
 }
 
 type Message struct {
@@ -31,10 +35,10 @@ func main() {
 	connConfig := &connection.Config{
 		Host:              "127.0.0.1",
 		Port:              5672,
-		User:              "nano",
-		Password:          "admin",
+		User:              "guest",
+		Password:          "guest",
 		Vhost:             "/",
-		ConnectionName:    "go-amqp",
+		ConnectionName:    "go-amqp-publisher",
 		ReconnectRetry:    10,
 		ReconnectInterval: 1 * time.Second,
 		Channels:          1000,
@@ -55,14 +59,19 @@ func main() {
 		panic(err)
 	}
 
+	fmt.Print("[INFO]: Publisher Created")
+
 	message := Message{
 		Name: "Dusan",
 	}
 
-	for i := 0; i < 1_000_000; i++ {
-		err := pub.Publish(context.Background(), message)
-		if err != nil {
+	for i := 0; i < 10_000_000; i++ {
+		if err = pub.Publish(context.Background(), message); err != nil {
 			panic(err)
+		}
+
+		if i % 100_000 == 0 {
+			fmt.Printf("[INFO]: Message Publushed %d\n", i)
 		}
 	}
 

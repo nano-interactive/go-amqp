@@ -27,8 +27,12 @@ func handler(ctx context.Context, msg Message) error {
 
 type logger struct{}
 
-func (l *logger) Error(msg string, args ...interface{}) {
-	fmt.Printf(msg+"\n", args...)
+func (d logger) Error(msg string, args ...any) {
+	fmt.Printf("[ERROR]: "+msg+"\n", args...)
+}
+
+func (d logger) Info(msg string, args ...any) {
+	fmt.Printf("[INFO]: "+msg+"\n", args...)
 }
 
 func main() {
@@ -41,10 +45,10 @@ func main() {
 	connConfig := &connection.Config{
 		Host:              "127.0.0.1",
 		Port:              5672,
-		User:              "nano",
-		Password:          "admin",
+		User:              "guest",
+		Password:          "guest",
 		Vhost:             "/",
-		ConnectionName:    "go-amqp",
+		ConnectionName:    "go-amqp-consumer",
 		ReconnectRetry:    10,
 		ReconnectInterval: 1 * time.Second,
 		Channels:          1000,
@@ -56,7 +60,7 @@ func main() {
 	}
 
 	c, err := consumer.New(ctx, pool, handler,
-		consumer.WithLogger(&logger{}),
+		consumer.WithLogger(logger{}),
 		consumer.WithQueueConfig(consumer.QueueConfig{
 			ConnectionNamePrefix: "go-amqp",
 			Workers:              1,

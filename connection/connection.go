@@ -36,6 +36,7 @@ type (
 		conn atomic.Pointer[amqp091.Connection]
 		*Config
 		*Events
+		closing atomic.Bool
 	}
 
 	Config struct {
@@ -54,7 +55,6 @@ type (
 func New(config *Config) (Connection, error) {
 	c := &connection{
 		Config: config,
-		conn:   atomic.Pointer[amqp091.Connection]{},
 		Events: &Events{
 			onReconnecting: nil,
 			onReconnect:    nil,
@@ -87,6 +87,11 @@ func (c *connection) IsClosed() bool {
 
 func (c *connection) handleErrors(ch chan *amqp091.Error) error {
 	for amqpErr := range ch {
+		if c.closing.Load() {
+			_ = c.Close()
+			return nil
+		}
+
 		if !shouldReconnect(amqpErr) {
 			continue
 		}
@@ -102,15 +107,11 @@ func (c *connection) handleErrors(ch chan *amqp091.Error) error {
 			return err
 		}
 
-		if amqpErr.Code != amqp091.ConnectionForced {
-			close(ch)
-		}
-
 		var err error
 		for i := 0; i < c.ReconnectRetry; i++ {
-			if err = c.connect(); err == nil && !c.conn.Load().IsClosed() {
+			if err = c.connect(); err == nil && !c.closing.Load() && !c.conn.Load().IsClosed() {
 				if c.onReconnect != nil {
-					if err := c.onReconnect(); err != nil {
+					if err = c.onReconnect(); err != nil {
 						return err
 					}
 				}
@@ -153,9 +154,10 @@ func (c *connection) connect() error {
 	}
 
 	c.conn.Store(conn)
+	notifyClose := conn.NotifyClose(make(chan *amqp091.Error))
 
 	go func() {
-		if err := c.handleErrors(conn.NotifyClose(make(chan *amqp091.Error))); err != nil {
+		if err := c.handleErrors(notifyClose); err != nil {
 			panic(err)
 		}
 	}()
@@ -164,6 +166,8 @@ func (c *connection) connect() error {
 }
 
 func (c *connection) Close() error {
+	c.closing.Store(true)
+
 	conn := c.conn.Load()
 
 	if !conn.IsClosed() {

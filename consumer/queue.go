@@ -18,14 +18,14 @@ type (
 
 	queue struct {
 		logger     amqp.Logger
-		queueName  string
 		connection connection.Connection
 		ctx        context.Context
+		handler    RawHandler
 		cancel     context.CancelFunc
 		cfg        *QueueConfig
 		wg         *sync.WaitGroup
-		handler    RawHandler
 		watchDog   chan struct{}
+		queueName  string
 	}
 )
 
@@ -63,8 +63,7 @@ func newQueue(
 		// Here we know -> this is the only thread modifying the context and cancel
 		queue.ctx = ctx
 		queue.cancel = cancel
-		err := queue.Listen()
-		return err
+		return queue.Listen()
 	})
 
 	conn.SetOnError(func(err error) {
