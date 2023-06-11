@@ -3,6 +3,7 @@ package consumer
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/nano-interactive/go-amqp"
 
@@ -23,9 +24,9 @@ type (
 		handler    RawHandler
 		cancel     context.CancelFunc
 		cfg        *QueueConfig
-		wg         *sync.WaitGroup
 		watchDog   chan struct{}
 		queueName  string
+		wg         sync.WaitGroup
 	}
 )
 
@@ -36,10 +37,9 @@ func newQueue(
 	cfg *QueueConfig,
 	conn connection.Connection,
 	handler RawHandler,
+	errorCb connection.OnErrorFunc,
 ) (*queue, error) {
 	ctx, cancel := context.WithCancel(base)
-
-	wg := &sync.WaitGroup{}
 
 	queue := &queue{
 		queueName:  queueName,
@@ -48,29 +48,24 @@ func newQueue(
 		cancel:     cancel,
 		connection: conn,
 		cfg:        cfg,
-		wg:         wg,
 		handler:    handler,
 		watchDog:   make(chan struct{}, cfg.Workers),
 	}
 
-	conn.SetOnReconnecting(func() error {
-		queue.closeHandlers()
-		return nil
+	conn.SetOnReconnecting(func(ctx context.Context) error {
+		return queue.closeHandlers(ctx)
 	})
 
-	conn.SetOnReconnect(func() error {
-		ctx, cancel = context.WithCancel(base)
-		// Here we know -> this is the only thread modifying the context and cancel
-		queue.ctx = ctx
+	conn.SetOnReconnect(func(ctx context.Context) error {
+		newCtx, cancel := context.WithCancel(base)
+		queue.ctx = newCtx
 		queue.cancel = cancel
 		return queue.Listen()
 	})
 
-	conn.SetOnError(func(err error) {
-		queue.logger.Error("Error: %v", err)
-	})
+	conn.SetOnError(errorCb)
 
-	go watchdog(ctx, conn, wg, queue.watchDog, queue)
+	go watchdog(ctx, conn, &queue.wg, queue.watchDog, queue)
 
 	return queue, nil
 }
@@ -101,19 +96,23 @@ func (q *queue) Listen() error {
 			return err
 		}
 
-		go listener(q.ctx, q.wg, channel, q.handler, q.logger, q.queueName, q.watchDog)
+		go listener(q.ctx, &q.wg, channel, q.handler, q.logger, q.queueName, q.watchDog)
 	}
 
 	return nil
 }
 
-func (q *queue) closeHandlers() {
+func (q *queue) closeHandlers(ctx context.Context) error {
 	q.cancel()
 	q.wg.Wait()
+
+	return nil
 }
 
 func (q *queue) Close() error {
-	q.closeHandlers()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = q.closeHandlers(ctx)
 	if q.watchDog != nil {
 		close(q.watchDog)
 	}

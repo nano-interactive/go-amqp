@@ -5,8 +5,8 @@ import (
 )
 
 type Config struct {
-	queueConfig QueueConfig
 	logger      amqp.Logger
+	queueConfig QueueConfig
 }
 
 type Option func(*Config)

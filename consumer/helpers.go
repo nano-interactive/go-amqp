@@ -34,8 +34,7 @@ func listener(
 		}
 
 		if !channel.IsClosed() {
-			err := channel.Close()
-			if err != nil {
+			if err := channel.Close(); err != nil {
 				panic(err)
 			}
 		}

@@ -54,12 +54,15 @@ func main() {
 		Channels:          1000,
 	}
 
-	pool, err := connection.New(connConfig)
+	pool, err := connection.New(ctx, connConfig)
 	if err != nil {
 		panic(err)
 	}
 
 	c, err := consumer.New(ctx, pool, handler,
+		func(err error) {
+			fmt.Println("Error:", err)
+		},
 		consumer.WithLogger(logger{}),
 		consumer.WithQueueConfig(consumer.QueueConfig{
 			ConnectionNamePrefix: "go-amqp",
