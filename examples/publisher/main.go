@@ -16,7 +16,7 @@ func (d logger) Error(msg string, args ...any) {
 }
 
 func (d logger) Info(msg string, args ...any) {
-	fmt.Printf("[INFO]: " + msg+"\n", args...)
+	fmt.Printf("[INFO]: "+msg+"\n", args...)
 }
 
 type Message struct {
@@ -44,13 +44,15 @@ func main() {
 		Channels:          1000,
 	}
 
-	conn, err := connection.New(connConfig)
+	ctx := context.Background()
+
+	conn, err := connection.New(ctx, connConfig)
 	if err != nil {
 		panic(err)
 	}
 
 	pub, err := publisher.New[Message](
-		context.Background(),
+		ctx,
 		conn,
 		publisher.WithLogger[Message](&logger{}),
 		publisher.WithBufferedMessages[Message](1000),
@@ -66,17 +68,16 @@ func main() {
 	}
 
 	for i := 0; i < 10_000_000; i++ {
-		if err = pub.Publish(context.Background(), message); err != nil {
+		if err = pub.Publish(ctx, message); err != nil {
 			panic(err)
 		}
 
-		if i % 100_000 == 0 {
+		if i%100_000 == 0 {
 			fmt.Printf("[INFO]: Message Publushed %d\n", i)
 		}
 	}
 
-	err = pub.Close()
-	if err != nil {
+	if err = pub.Close(); err != nil {
 		panic(err)
 	}
 }
