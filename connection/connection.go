@@ -113,8 +113,8 @@ func (c *connection) handleReconnect(ctx context.Context, connection *amqp091.Co
 			}
 
 			// No need to reconnect if connection is not closed ( this error means that channel is closed)
-			if !errors.Is(amqpErr, amqp091.ErrClosed) {
-				return
+			if !errors.Is(amqpErr, amqp091.ErrClosed) || !c.conn.Load().IsClosed() {
+				continue
 			}
 
 			if c.onBeforeConnectionReady != nil {
