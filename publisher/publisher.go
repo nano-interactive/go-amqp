@@ -46,8 +46,6 @@ func (publisher *Publisher[T]) onConnectionReady(cfg Config[T]) connection.OnCon
 	exchangeType := msg.GetExchangeType().String()
 
 	return func(ctx context.Context, connection *amqp091.Connection) error {
-		publisher.wg.Add(1)
-		publisher.ready.Lock()
 		chOrigin, notifyClose, err := newChannel(
 			connection,
 			exchangeName,
@@ -58,6 +56,7 @@ func (publisher *Publisher[T]) onConnectionReady(cfg Config[T]) connection.OnCon
 			return err
 		}
 
+		publisher.wg.Add(1)
 		go func() {
 			defer publisher.wg.Done()
 			errCh := make(chan error)
@@ -180,7 +179,11 @@ func New[T Message](options ...Option[T]) (*Publisher[T], error) {
 
 	conn, err := connection.New(ctx, cfg.connectionOptions, connection.Events{
 		OnConnectionReady: publisher.onConnectionReady(cfg),
-		OnError:           cfg.onError,
+		OnBeforeConnectionReady: func(ctx context.Context) error {
+			publisher.ready.Lock()
+			return nil
+		},
+		OnError: cfg.onError,
 	})
 	if err != nil {
 		return nil, err
