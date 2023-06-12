@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sync/atomic"
+	"sync"
 	"time"
 
 	"github.com/rabbitmq/amqp091-go"
@@ -25,10 +25,6 @@ type (
 		GetRoutingKey() string
 	}
 
-	MessageRoutingKey interface {
-		RoutingKey() string
-	}
-
 	Pub[T Message] interface {
 		io.Closer
 		Publish(ctx context.Context, msg T) error
@@ -36,9 +32,11 @@ type (
 
 	Publisher[T Message] struct {
 		conn       connection.Connection
-		ch         atomic.Pointer[amqp091.Channel]
 		serializer serializer.Serializer[T]
-		ready      atomic.Bool
+		ch         *amqp091.Channel
+		cancel     context.CancelFunc
+		ready      sync.RWMutex
+		wg         sync.WaitGroup
 	}
 )
 
@@ -48,7 +46,8 @@ func (publisher *Publisher[T]) onConnectionReady(cfg Config[T]) connection.OnCon
 	exchangeType := msg.GetExchangeType().String()
 
 	return func(ctx context.Context, connection *amqp091.Connection) error {
-		publisher.ready.Store(false)
+		publisher.wg.Add(1)
+		publisher.ready.Lock()
 		chOrigin, notifyClose, err := newChannel(
 			connection,
 			exchangeName,
@@ -60,15 +59,23 @@ func (publisher *Publisher[T]) onConnectionReady(cfg Config[T]) connection.OnCon
 		}
 
 		go func() {
+			defer publisher.wg.Done()
 			errCh := make(chan error)
 			defer close(errCh)
 
-			for notifyClose != nil {
+			for {
 				select {
 				case <-ctx.Done():
+					publisher.ready.Lock()
+					if !publisher.ch.IsClosed() {
+						if err = publisher.ch.Close(); err != nil {
+							cfg.logger.Error("Failed to close channel: %v", err)
+						}
+					}
+					publisher.ready.Unlock()
 					return
 				case <-errCh:
-					publisher.ready.Store(false)
+					publisher.ready.Lock()
 
 					chOrigin, notifyClose, err = newChannel(
 						connection,
@@ -79,29 +86,35 @@ func (publisher *Publisher[T]) onConnectionReady(cfg Config[T]) connection.OnCon
 
 					if err != nil {
 						errCh <- err
+						publisher.ready.Unlock()
 						continue
 					}
 
-					publisher.ch.Store(chOrigin)
-					publisher.ready.Store(true)
+					publisher.ch = chOrigin
+					publisher.ready.Unlock()
 
 				case err, ok := <-notifyClose:
 					if !ok {
-						notifyClose = nil
 						return
 					}
 
+					if connection.IsClosed() {
+						cfg.logger.Error("Connection closed")
+						return
+					}
+
+					cfg.logger.Error("Channel Error: %v", err)
 					// When connection is still open and channel is closed we need to create new channel
 					// and throw away the old one
-					if errors.Is(err, amqp091.ErrClosed) && !connection.IsClosed() && chOrigin.IsClosed() {
+					if errors.Is(err, amqp091.ErrClosed) {
 						errCh <- err
 					}
 				}
 			}
 		}()
 
-		publisher.ch.Store(chOrigin)
-		publisher.ready.Store(true)
+		publisher.ch = chOrigin
+		publisher.ready.Unlock()
 
 		return nil
 	}
@@ -158,50 +171,34 @@ func New[T Message](options ...Option[T]) (*Publisher[T], error) {
 		option(&cfg)
 	}
 
+	ctx, cancel := context.WithCancel(cfg.ctx)
+
 	publisher := &Publisher[T]{
 		serializer: cfg.serializer,
-		ch:         atomic.Pointer[amqp091.Channel]{},
-		ready:      atomic.Bool{},
+		cancel:     cancel,
 	}
 
-	onReady := publisher.onConnectionReady(cfg)
-	onReadyCh := make(chan struct{}, 1)
-
-	conn, err := connection.New(cfg.ctx, cfg.connectionOptions, connection.Events{
-		OnConnectionReady: func(ctx context.Context, c *amqp091.Connection) error {
-			err := onReady(ctx, c)
-			defer close(onReadyCh)
-
-			if err != nil {
-				return err
-			}
-
-			onReadyCh <- struct{}{}
-
-			return nil
-		},
-		OnError: cfg.onError,
+	conn, err := connection.New(ctx, cfg.connectionOptions, connection.Events{
+		OnConnectionReady: publisher.onConnectionReady(cfg),
+		OnError:           cfg.onError,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	<-onReadyCh
 	publisher.conn = conn
 	return publisher, nil
 }
 
 func (p *Publisher[T]) Publish(ctx context.Context, msg T) error {
-	if !p.ready.Load() {
-		return ErrChannelNotReady
-	}
-
+	p.ready.RLock()
+	defer p.ready.RUnlock()
 	body, err := p.serializer.Marshal(msg)
 	if err != nil {
 		return err
 	}
 
-	return p.ch.Load().PublishWithContext(
+	return p.ch.PublishWithContext(
 		ctx,
 		msg.GetExchangeName(),
 		msg.GetRoutingKey(),
@@ -217,5 +214,7 @@ func (p *Publisher[T]) Publish(ctx context.Context, msg T) error {
 }
 
 func (p *Publisher[T]) Close() error {
+	p.cancel()
+	p.wg.Wait()
 	return p.conn.Close()
 }

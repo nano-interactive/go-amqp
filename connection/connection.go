@@ -95,7 +95,7 @@ func (c *connection) IsClosed() bool {
 
 func (c *connection) handleReconnect(ctx context.Context, connection *amqp091.Connection) {
 	notifyClose := connection.NotifyClose(make(chan *amqp091.Error))
-	for notifyClose != nil {
+	for {
 		select {
 		case <-ctx.Done():
 			return

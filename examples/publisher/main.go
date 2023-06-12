@@ -68,9 +68,13 @@ func main() {
 		Name: "Dusan",
 	}
 
-	for i := 0; i < 10_000_000; i++ {
+	errCount := 0
+
+	for i := 0; i < 10_000_00; i++ {
 		if err = pub.Publish(ctx, message); err != nil {
-			panic(err)
+			fmt.Printf("[ERROR]: Failed to publish message %d with error %v\n", i, err)
+			errCount++
+			continue
 		}
 
 		if i%100_000 == 0 {
@@ -78,7 +82,12 @@ func main() {
 		}
 	}
 
+	fmt.Printf("[INFO]: Total errors %d\n", errCount)
+
 	if err = pub.Close(); err != nil {
 		panic(err)
 	}
+
+	fmt.Printf("[INFO]: Waiting 20 more seconds\n")
+	time.Sleep(20 * time.Second)
 }
