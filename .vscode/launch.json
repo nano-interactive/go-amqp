@@ -1,0 +1,30 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Start Consumer",
+      "type": "go",
+      "apiVersion": 2,
+      "asRoot": false,
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "request": "launch",
+      "mode": "auto",
+      "program": "examples/consumer/main.go"
+    },
+    {
+      "name": "Start Producer",
+      "type": "go",
+      "apiVersion": 2,
+      "asRoot": false,
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "request": "launch",
+      "mode": "auto",
+      "program": "examples/publisher/main.go"
+    }
+  ]
+}

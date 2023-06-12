@@ -31,10 +31,6 @@ type (
 		io.Closer
 		IsClosed() bool
 
-		OnConnectionReady(onReconnect OnConnectionReady)
-		OnBeforeConnectionReady(onReconnecting OnReconnectingFunc)
-		OnError(onReconnecting OnErrorFunc)
-
 		RawConnection() *amqp091.Connection
 	}
 
@@ -42,9 +38,11 @@ type (
 		cancel context.CancelFunc
 		conn   atomic.Pointer[amqp091.Connection]
 		*Config
-		*Events
-		once    sync.Once
-		closing atomic.Bool
+		onBeforeConnectionReady OnReconnectingFunc
+		onConnectionReady       OnConnectionReady
+		onError                 OnErrorFunc
+		once                    sync.Once
+		closing                 atomic.Bool
 	}
 
 	Config struct {
@@ -58,18 +56,26 @@ type (
 		Channels          int           `json:"channels,omitempty" mapstructure:"channels" yaml:"channels"`
 		ReconnectInterval time.Duration `json:"reconnect_interval,omitempty" mapstructure:"reconnect_interval" yaml:"reconnect_interval"`
 	}
+
+	Events struct {
+		OnConnectionReady       OnConnectionReady  `json:"-" mapstructure:"-" yaml:"-"`
+		OnBeforeConnectionReady OnReconnectingFunc `json:"-" mapstructure:"-" yaml:"-"`
+		OnError                 OnErrorFunc        `json:"-" mapstructure:"-" yaml:"-"`
+	}
 )
 
-func New(ctx context.Context, config Config) (Connection, error) {
+func New(ctx context.Context, config Config, events Events) (Connection, error) {
+	if events.OnConnectionReady == nil {
+		return nil, fmt.Errorf("OnConnectionReady is required")
+	}
+
 	newCtx, cancel := context.WithCancel(ctx)
 	c := &connection{
-		Config: &config,
-		cancel: cancel,
-		Events: &Events{
-			onBeforeConnectionInit: nil,
-			onConnectInit:          nil,
-			onError:                nil,
-		},
+		Config:                  &config,
+		cancel:                  cancel,
+		onBeforeConnectionReady: events.OnBeforeConnectionReady,
+		onConnectionReady:       events.OnConnectionReady,
+		onError:                 events.OnError,
 	}
 
 	if err := c.connect(newCtx); err != nil {
@@ -111,8 +117,8 @@ func (c *connection) handleReconnect(ctx context.Context, connection *amqp091.Co
 				return
 			}
 
-			if c.onBeforeConnectionInit != nil {
-				if err := c.onBeforeConnectionInit(ctx); err != nil && c.onError != nil {
+			if c.onBeforeConnectionReady != nil {
+				if err := c.onBeforeConnectionReady(ctx); err != nil && c.onError != nil {
 					c.onError(&OnBeforeConnectError{Err: err})
 				}
 			}
@@ -172,14 +178,12 @@ func (c *connection) connect(ctx context.Context) error {
 
 	go c.handleReconnect(ctx, conn)
 
-	if c.onConnectInit != nil {
-		if err = c.onConnectInit(ctx, conn); err != nil {
-			if c.onError != nil {
-				c.onError(&ConnectInitError{Err: err})
-			}
-
-			return err
+	if err = c.onConnectionReady(ctx, conn); err != nil {
+		if c.onError != nil {
+			c.onError(&ConnectInitError{Err: err})
 		}
+
+		return err
 	}
 
 	return nil

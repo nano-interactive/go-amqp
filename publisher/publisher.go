@@ -154,25 +154,40 @@ func New[T Message](options ...Option[T]) (*Publisher[T], error) {
 		},
 	}
 
-	conn, err := connection.New(cfg.ctx, cfg.connectionOptions)
-	if err != nil {
-		return nil, err
-	}
-
 	for _, option := range options {
 		option(&cfg)
 	}
 
 	publisher := &Publisher[T]{
-		conn:       conn,
 		serializer: cfg.serializer,
 		ch:         atomic.Pointer[amqp091.Channel]{},
 		ready:      atomic.Bool{},
 	}
 
-	conn.OnConnectionReady(publisher.onConnectionReady(cfg))
-	conn.OnError(cfg.onError)
+	onReady := publisher.onConnectionReady(cfg)
+	onReadyCh := make(chan struct{}, 1)
 
+	conn, err := connection.New(cfg.ctx, cfg.connectionOptions, connection.Events{
+		OnConnectionReady: func(ctx context.Context, c *amqp091.Connection) error {
+			err := onReady(ctx, c)
+			defer close(onReadyCh)
+
+			if err != nil {
+				return err
+			}
+
+			onReadyCh <- struct{}{}
+
+			return nil
+		},
+		OnError: cfg.onError,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	<-onReadyCh
+	publisher.conn = conn
 	return publisher, nil
 }
 
