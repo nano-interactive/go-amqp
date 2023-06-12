@@ -31,7 +31,7 @@ type (
 	}
 
 	Publisher[T Message] struct {
-		conn       connection.Connection
+		conn       *connection.Connection
 		serializer serializer.Serializer[T]
 		ch         *amqp091.Channel
 		cancel     context.CancelFunc

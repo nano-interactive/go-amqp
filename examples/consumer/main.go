@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/nano-interactive/go-amqp/connection"
@@ -19,9 +21,11 @@ func (m Message) GetQueueName() string {
 	return "testing_queue"
 }
 
-func handler(ctx context.Context, msg Message) error {
-	fmt.Println("Message received:", msg.Name)
+var cnt atomic.Uint64
 
+func handler(ctx context.Context, msg Message) error {
+	defer cnt.Add(1)
+	// fmt.Printf("[INFO] Message received: %d %s\n", cnt.Load(), msg.Name)
 	return nil
 }
 
@@ -40,45 +44,36 @@ func main() {
 	defer cancel()
 
 	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 
-	connConfig := connection.Config{
-		Host:              "127.0.0.1",
-		Port:              5672,
-		User:              "guest",
-		Password:          "guest",
-		Vhost:             "/",
-		ConnectionName:    "go-amqp-consumer",
-		ReconnectRetry:    10,
-		ReconnectInterval: 1 * time.Second,
-		Channels:          1000,
-	}
-
-	pool, err := connection.New(ctx, connConfig)
-	if err != nil {
-		panic(err)
-	}
-
-	c, err := consumer.New(ctx, pool, handler,
-		func(err error) {
-			fmt.Println("Error:", err)
-		},
+	c, err := consumer.New(handler,
+		consumer.WithContext(ctx),
+		consumer.WithConnectionOptions(connection.Config{
+			Host:              "127.0.0.1",
+			Port:              5672,
+			User:              "guest",
+			Password:          "guest",
+			Vhost:             "/",
+			ConnectionName:    "go-amqp-consumer",
+			ReconnectRetry:    10,
+			ReconnectInterval: 1 * time.Second,
+			Channels:          1000,
+		}),
 		consumer.WithLogger(logger{}),
 		consumer.WithQueueConfig(consumer.QueueConfig{
-			ConnectionNamePrefix: "go-amqp",
-			Workers:              1,
-			PrefetchCount:        128,
+			Workers:       1,
+			PrefetchCount: 128,
 		}),
 	)
 	if err != nil {
 		panic(err)
 	}
 
-	if err := c.Start(); err != nil {
-		panic(err)
-	}
-
+	fmt.Println("[INFO] Consumer started")
 	<-sig
+	cancel()
+	fmt.Println("[INFO] Signal Recieved")
+
 	if err := c.Close(); err != nil {
 		panic(err)
 	}

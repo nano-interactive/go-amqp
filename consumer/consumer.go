@@ -2,9 +2,10 @@ package consumer
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
-
-	"go.uber.org/multierr"
+	"os"
 
 	"github.com/nano-interactive/go-amqp"
 	"github.com/nano-interactive/go-amqp/connection"
@@ -17,32 +18,35 @@ type (
 
 	Sub[T Message] interface {
 		io.Closer
-		Start() error
 	}
 
 	Consumer[T Message] struct {
 		logger amqp.Logger
-		ctx    context.Context
 		queues *queue
 	}
 )
 
 func NewRaw[T Message](
-	ctx context.Context,
-	conn connection.Connection,
 	h RawHandler,
-	errorCb connection.OnErrorFunc,
 	options ...Option,
 ) (*Consumer[T], error) {
 	var l amqp.Logger = &amqp.EmptyLogger{}
 
 	opt := Config{
 		queueConfig: QueueConfig{
-			PrefetchCount:        128,
-			ConnectionNamePrefix: "",
-			Workers:              1,
+			PrefetchCount: 128,
+			Workers:       1,
 		},
 		logger: &amqp.EmptyLogger{},
+		ctx:    context.Background(),
+		onError: func(err error) {
+			if errors.Is(err, connection.ErrRetriesExhausted) {
+				panic(err)
+			}
+
+			fmt.Fprintf(os.Stderr, "[ERROR]: An error has occurred! %v\n", err)
+		},
+		connectionOptions: connection.DefaultConfig,
 	}
 
 	for _, o := range options {
@@ -52,55 +56,41 @@ func NewRaw[T Message](
 	var msg T
 
 	queue, err := newQueue(
-		ctx,
+		opt.ctx,
 		msg.GetQueueName(),
-		opt.logger,
-		&opt.queueConfig,
-		conn,
+		opt,
 		h,
-		errorCb,
 	)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Consumer[T]{
-		ctx:    ctx,
 		logger: l,
 		queues: queue,
 	}, nil
 }
 
-func NewRawFunc[T Message](ctx context.Context, conn connection.Connection, h RawHandlerFunc, errorCb connection.OnErrorFunc, options ...Option) (*Consumer[T], error) {
-	return NewRaw[T](ctx, conn, h, errorCb, options...)
+func NewRawFunc[T Message](h RawHandlerFunc, options ...Option) (*Consumer[T], error) {
+	return NewRaw[T](h, options...)
 }
 
-func New[T Message](ctx context.Context, conn connection.Connection, h HandlerFunc[T], errorCb connection.OnErrorFunc, options ...Option) (*Consumer[T], error) {
+func New[T Message](h HandlerFunc[T], options ...Option) (*Consumer[T], error) {
 	var msg T
 
-	return NewRaw[T](ctx, conn, &handler[T]{
+	return NewRaw[T](&handler[T]{
 		handler:   h,
 		queueName: msg.GetQueueName(),
-	}, errorCb, options...)
+	}, options...)
 }
 
-func NewHandler[T Message](ctx context.Context, conn connection.Connection, h Handler[T], errorCb connection.OnErrorFunc, options ...Option) (*Consumer[T], error) {
+func NewHandler[T Message](h Handler[T], options ...Option) (*Consumer[T], error) {
 	var msg T
 
-	return NewRaw[T](ctx, conn, &handler[T]{
+	return NewRaw[T](&handler[T]{
 		queueName: msg.GetQueueName(),
 		handler:   h,
-	}, errorCb, options...)
-}
-
-func (c *Consumer[T]) Start() error {
-	var err error
-
-	if listenErr := c.queues.Listen(); listenErr != nil {
-		err = multierr.Append(err, listenErr)
-	}
-
-	return err
+	}, options...)
 }
 
 func (c *Consumer[T]) Close() error {

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/nano-interactive/go-amqp/connection"
@@ -68,15 +69,17 @@ func main() {
 
 	errCount := 0
 
-	for i := 0; i < 10_000_00; i++ {
+	for i := 1; i <= 10_000_000; i++ {
 		if err = pub.Publish(ctx, message); err != nil {
-			fmt.Printf("[ERROR]: Failed to publish message %d with error %v\n", i, err)
+			fmt.Fprintf(os.Stderr, "[ERROR]: Failed to publish message %d with error %v\n", i, err)
 			errCount++
+			time.Sleep(10 * time.Millisecond)
 			continue
 		}
 
-		if i%100_000 == 0 {
+		if i%1_000_000 == 0 {
 			fmt.Printf("[INFO]: Message Publushed %d\n", i)
+			time.Sleep(200 * time.Millisecond)
 		}
 	}
 

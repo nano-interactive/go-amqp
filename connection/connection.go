@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -27,14 +26,7 @@ var DefaultConfig = Config{
 var ErrRetriesExhausted = errors.New("number of retries to acquire conenction exhausted")
 
 type (
-	Connection interface {
-		io.Closer
-		IsClosed() bool
-
-		RawConnection() *amqp091.Connection
-	}
-
-	connection struct {
+	Connection struct {
 		cancel context.CancelFunc
 		conn   atomic.Pointer[amqp091.Connection]
 		*Config
@@ -64,13 +56,13 @@ type (
 	}
 )
 
-func New(ctx context.Context, config Config, events Events) (Connection, error) {
+func New(ctx context.Context, config Config, events Events) (*Connection, error) {
 	if events.OnConnectionReady == nil {
 		return nil, fmt.Errorf("OnConnectionReady is required")
 	}
 
 	newCtx, cancel := context.WithCancel(ctx)
-	c := &connection{
+	c := &Connection{
 		Config:                  &config,
 		cancel:                  cancel,
 		onBeforeConnectionReady: events.OnBeforeConnectionReady,
@@ -85,15 +77,7 @@ func New(ctx context.Context, config Config, events Events) (Connection, error) 
 	return c, nil
 }
 
-func (c *connection) RawConnection() *amqp091.Connection {
-	return c.conn.Load()
-}
-
-func (c *connection) IsClosed() bool {
-	return c.conn.Load().IsClosed()
-}
-
-func (c *connection) handleReconnect(ctx context.Context, connection *amqp091.Connection, connect func(ctx context.Context) error) {
+func (c *Connection) handleReconnect(ctx context.Context, connection *amqp091.Connection, connect func(ctx context.Context) error) {
 	notifyClose := connection.NotifyClose(make(chan *amqp091.Error))
 	for {
 		select {
@@ -113,7 +97,7 @@ func (c *connection) handleReconnect(ctx context.Context, connection *amqp091.Co
 			}
 
 			// No need to reconnect if connection is not closed ( this error means that channel is closed)
-			if !errors.Is(amqpErr, amqp091.ErrClosed) || !c.conn.Load().IsClosed() {
+			if !errors.Is(amqpErr, amqp091.ErrClosed) && !c.conn.Load().IsClosed() {
 				continue
 			}
 
@@ -123,8 +107,6 @@ func (c *connection) handleReconnect(ctx context.Context, connection *amqp091.Co
 				if err := connect(ctx); err == nil {
 					return
 				}
-
-				time.Sleep(c.ReconnectInterval)
 			}
 
 			if i >= c.ReconnectRetry {
@@ -134,7 +116,7 @@ func (c *connection) handleReconnect(ctx context.Context, connection *amqp091.Co
 	}
 }
 
-func (c *connection) connect() func(ctx context.Context) error {
+func (c *Connection) connect() func(ctx context.Context) error {
 	connectionURI := fmt.Sprintf(
 		"amqp://%s:%s@%s:%d",
 		c.User,
@@ -191,7 +173,7 @@ func (c *connection) connect() func(ctx context.Context) error {
 	}
 }
 
-func (c *connection) connectionDispose() error {
+func (c *Connection) connectionDispose() error {
 	c.closing.Store(true)
 	conn := c.conn.Load()
 
@@ -202,7 +184,7 @@ func (c *connection) connectionDispose() error {
 	return conn.Close()
 }
 
-func (c *connection) Close() error {
+func (c *Connection) Close() error {
 	var err error
 
 	c.once.Do(func() {

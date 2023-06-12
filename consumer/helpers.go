@@ -4,39 +4,40 @@ import (
 	"context"
 	"sync"
 
-	"github.com/nano-interactive/go-amqp"
-
 	"github.com/rabbitmq/amqp091-go"
 )
 
 func listener(
 	ctx context.Context,
 	wg *sync.WaitGroup,
-	channel *amqp091.Channel,
+	queue *queue,
+	conn *amqp091.Connection,
 	handler RawHandler,
-	logger amqp.Logger,
-	queueName string,
-	workerExit chan struct{},
+	workerExit chan<- struct{},
 ) {
 	defer wg.Done()
 
-	dataStream, err := channel.Consume(queueName, "", false, false, false, false, nil)
+	channel, err := conn.Channel()
 	if err != nil {
-		logger.Error("Failed to consume queue(%s): %v", queueName, err)
+		workerExit <- struct{}{}
+		return
+	}
+
+	if err = channel.Qos(queue.cfg.PrefetchCount, 0, false); err != nil {
+		workerExit <- struct{}{}
+		return
+	}
+
+	dataStream, err := channel.Consume(queue.queueName, "", false, false, false, false, nil)
+	if err != nil {
+		queue.logger.Error("Failed to consume queue(%s): %v", queue.queueName, err)
+		workerExit <- struct{}{}
 		return
 	}
 
 	defer func(channel *amqp091.Channel) {
-		err := ctx.Err()
-
-		if err != context.Canceled && err != context.DeadlineExceeded {
-			workerExit <- struct{}{}
-		}
-
 		if !channel.IsClosed() {
-			if err := channel.Close(); err != nil {
-				panic(err)
-			}
+			_ = channel.Close()
 		}
 	}(channel)
 
@@ -48,7 +49,7 @@ func listener(
 			}
 
 			if err := handler.Handle(ctx, &delivery); err != nil {
-				logger.Error("Failed to handle message: %v", err)
+				queue.logger.Error("Failed to handle message: %v", err)
 				continue
 			}
 		case <-ctx.Done():
