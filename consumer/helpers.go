@@ -4,13 +4,16 @@ import (
 	"context"
 	"sync"
 
+	"github.com/nano-interactive/go-amqp"
 	"github.com/rabbitmq/amqp091-go"
 )
 
 func listener(
 	ctx context.Context,
 	wg *sync.WaitGroup,
-	queue *queue,
+	queueName string,
+	cfg QueueConfig,
+	logger amqp.Logger,
 	conn *amqp091.Connection,
 	handler RawHandler,
 	workerExit chan<- struct{},
@@ -23,14 +26,14 @@ func listener(
 		return
 	}
 
-	if err = channel.Qos(queue.cfg.PrefetchCount, 0, false); err != nil {
+	if err = channel.Qos(cfg.PrefetchCount, 0, false); err != nil {
 		workerExit <- struct{}{}
 		return
 	}
 
-	dataStream, err := channel.Consume(queue.queueName, "", false, false, false, false, nil)
+	dataStream, err := channel.Consume(queueName, "", false, false, false, false, nil)
 	if err != nil {
-		queue.logger.Error("Failed to consume queue(%s): %v", queue.queueName, err)
+		logger.Error("Failed to consume queue(%s): %v", queueName, err)
 		workerExit <- struct{}{}
 		return
 	}
@@ -49,7 +52,7 @@ func listener(
 			}
 
 			if err := handler.Handle(ctx, &delivery); err != nil {
-				queue.logger.Error("Failed to handle message: %v", err)
+				logger.Error("Failed to handle message: %v", err)
 				continue
 			}
 		case <-ctx.Done():

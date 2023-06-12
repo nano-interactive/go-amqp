@@ -18,21 +18,16 @@ type (
 	queue struct {
 		logger     amqp.Logger
 		connection *connection.Connection
-		queueName  string
-		cfg        QueueConfig
 	}
 )
 
 func newQueue(
 	base context.Context,
-	queueName string,
 	cfg Config,
 	handler RawHandler,
 ) (*queue, error) {
 	queue := &queue{
-		queueName: queueName,
 		logger:    cfg.logger,
-		cfg:       cfg.queueConfig,
 	}
 
 	conn, err := connection.New(base, cfg.connectionOptions, connection.Events{
@@ -42,7 +37,7 @@ func newQueue(
 				watchDog <- struct{}{}
 			}
 
-			go watchdog(ctx, connection, watchDog, cfg.onError, queue, handler)
+			go watchdog(ctx, connection, watchDog, cfg.onError, cfg, handler)
 
 			return nil
 		},

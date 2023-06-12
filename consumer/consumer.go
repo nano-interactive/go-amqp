@@ -21,23 +21,19 @@ type (
 	}
 
 	Consumer[T Message] struct {
-		logger amqp.Logger
 		queues *queue
 	}
 )
 
-func NewRaw[T Message](
-	h RawHandler,
-	options ...Option,
-) (*Consumer[T], error) {
-	var l amqp.Logger = &amqp.EmptyLogger{}
+func NewRaw[T Message](handler RawHandler, options ...Option) (Consumer[T], error) {
+	var msg T
 
-	opt := Config{
+	cfg := Config{
 		queueConfig: QueueConfig{
 			PrefetchCount: 128,
 			Workers:       1,
 		},
-		logger: &amqp.EmptyLogger{},
+		logger: amqp.EmptyLogger{},
 		ctx:    context.Background(),
 		onError: func(err error) {
 			if errors.Is(err, connection.ErrRetriesExhausted) {
@@ -47,50 +43,47 @@ func NewRaw[T Message](
 			fmt.Fprintf(os.Stderr, "[ERROR]: An error has occurred! %v\n", err)
 		},
 		connectionOptions: connection.DefaultConfig,
+		queueName:         msg.GetQueueName(),
 	}
 
 	for _, o := range options {
-		o(&opt)
+		o(&cfg)
 	}
 
-	var msg T
-
-	queue, err := newQueue(
-		opt.ctx,
-		msg.GetQueueName(),
-		opt,
-		h,
-	)
+	queue, err := newQueue(cfg.ctx, cfg, handler)
 	if err != nil {
-		return nil, err
+		return Consumer[T]{}, err
 	}
 
-	return &Consumer[T]{
-		logger: l,
+	return Consumer[T]{
 		queues: queue,
 	}, nil
 }
 
-func NewRawFunc[T Message](h RawHandlerFunc, options ...Option) (*Consumer[T], error) {
+func NewRawFunc[T Message](h RawHandlerFunc, options ...Option) (Consumer[T], error) {
 	return NewRaw[T](h, options...)
 }
 
-func New[T Message](h HandlerFunc[T], options ...Option) (*Consumer[T], error) {
+func New[T Message](h HandlerFunc[T], options ...Option) (Consumer[T], error) {
 	var msg T
 
-	return NewRaw[T](&handler[T]{
+	privHandler := handler[T]{
 		handler:   h,
 		queueName: msg.GetQueueName(),
-	}, options...)
+	}
+
+	return NewRaw[T](privHandler, options...)
 }
 
-func NewHandler[T Message](h Handler[T], options ...Option) (*Consumer[T], error) {
+func NewHandler[T Message](h Handler[T], options ...Option) (Consumer[T], error) {
 	var msg T
 
-	return NewRaw[T](&handler[T]{
+	privHandler := handler[T]{
 		queueName: msg.GetQueueName(),
 		handler:   h,
-	}, options...)
+	}
+
+	return NewRaw[T](privHandler, options...)
 }
 
 func (c *Consumer[T]) Close() error {

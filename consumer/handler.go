@@ -34,7 +34,7 @@ func (h RawHandlerFunc) Handle(ctx context.Context, body *amqp091.Delivery) erro
 	return h(ctx, body)
 }
 
-func (h *handler[T]) Handle(ctx context.Context, delivery *amqp091.Delivery) error {
+func (h handler[T]) Handle(ctx context.Context, delivery *amqp091.Delivery) error {
 	var body T
 
 	switch delivery.ContentType {

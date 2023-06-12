@@ -14,7 +14,7 @@ func watchdog(
 	conn *amqp091.Connection,
 	workerExit chan struct{},
 	onError connection.OnErrorFunc,
-	queue *queue,
+	cfg Config,
 	handler RawHandler,
 ) {
 	var wg sync.WaitGroup
@@ -36,14 +36,11 @@ func watchdog(
 				continue
 			}
 
-			if err = channel.Qos(queue.cfg.PrefetchCount, 0, false); err != nil {
+			if err = channel.Qos(cfg.queueConfig.PrefetchCount, 0, false); err != nil {
 				onError(fmt.Errorf("failed to set prefetch count, trying again: %v", err))
 
 				if !channel.IsClosed() {
-					err = channel.Close()
-					if err != nil {
-						onError(fmt.Errorf("failed to set prefetch count, trying again: %v", err))
-					}
+					_ = channel.Close()
 				}
 				workerExit <- struct{}{}
 				continue
@@ -56,7 +53,7 @@ func watchdog(
 			}
 
 			wg.Add(1)
-			go listener(ctx, &wg, queue, conn, handler, workerExit)
+			go listener(ctx, &wg, cfg.queueName, cfg.queueConfig, cfg.logger, conn, handler, workerExit)
 		}
 	}
 }

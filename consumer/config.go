@@ -13,6 +13,8 @@ type Config struct {
 	onError           connection.OnErrorFunc
 	connectionOptions connection.Config
 	queueConfig       QueueConfig
+
+	queueName string
 }
 
 type Option func(*Config)
