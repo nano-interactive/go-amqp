@@ -91,7 +91,9 @@ func (publisher *Publisher[T]) onConnectionReady(cfg Config[T]) connection.OnCon
 						return
 					}
 
-					if errors.Is(err, amqp091.ErrClosed) && err.Code == amqp091.ChannelError {
+					// When connection is still open and channel is closed we need to create new channel
+					// and throw away the old one
+					if errors.Is(err, amqp091.ErrClosed) && !connection.IsClosed() && chOrigin.IsClosed() {
 						errCh <- err
 					}
 				}

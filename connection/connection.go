@@ -79,12 +79,6 @@ func New(ctx context.Context, config Config) (Connection, error) {
 	return c, nil
 }
 
-func shouldReconnect(amqpErr *amqp091.Error) bool {
-	return amqpErr.Code != amqp091.ConnectionForced ||
-		amqpErr.Code == amqp091.ResourceError ||
-		amqpErr.Code == amqp091.PreconditionFailed
-}
-
 func (c *connection) RawConnection() *amqp091.Connection {
 	return c.conn.Load()
 }
@@ -104,11 +98,16 @@ func (c *connection) handleReconnect(ctx context.Context, connection *amqp091.Co
 				return
 			}
 
-			if c.closing.Load() || !shouldReconnect(amqpErr) {
+			if c.closing.Load() {
 				if err := c.connectionDispose(); err != nil && c.onError != nil {
 					c.onError(&OnConnectionCloseError{Err: err})
 				}
 
+				return
+			}
+
+			// No need to reconnect if connection is not closed ( this error means that channel is closed)
+			if errors.Is(amqpErr, amqp091.ErrClosed) && !c.conn.Load().IsClosed() {
 				return
 			}
 
