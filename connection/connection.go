@@ -78,7 +78,7 @@ func New(ctx context.Context, config Config, events Events) (Connection, error) 
 		onError:                 events.OnError,
 	}
 
-	if err := c.connect(newCtx); err != nil {
+	if err := c.connect()(newCtx); err != nil {
 		return nil, err
 	}
 
@@ -93,7 +93,7 @@ func (c *connection) IsClosed() bool {
 	return c.conn.Load().IsClosed()
 }
 
-func (c *connection) handleReconnect(ctx context.Context, connection *amqp091.Connection) {
+func (c *connection) handleReconnect(ctx context.Context, connection *amqp091.Connection, connect func(ctx context.Context) error) {
 	notifyClose := connection.NotifyClose(make(chan *amqp091.Error))
 	for {
 		select {
@@ -117,20 +117,10 @@ func (c *connection) handleReconnect(ctx context.Context, connection *amqp091.Co
 				continue
 			}
 
-			if c.onBeforeConnectionReady != nil {
-				if err := c.onBeforeConnectionReady(ctx); err != nil && c.onError != nil {
-					c.onError(&OnBeforeConnectError{Err: err})
-				}
-			}
-
-			if err := c.connectionDispose(); err != nil && c.onError != nil {
-				c.onError(&OnConnectionCloseError{Err: err})
-			}
-
 			var i int
 
 			for i = 0; i < c.ReconnectRetry; i++ {
-				if err := c.connect(ctx); err == nil {
+				if err := connect(ctx); err == nil {
 					return
 				}
 
@@ -144,21 +134,7 @@ func (c *connection) handleReconnect(ctx context.Context, connection *amqp091.Co
 	}
 }
 
-func (c *connection) connect(ctx context.Context) error {
-	// TODO Reuse properties to reduce allocations
-
-	properties := amqp091.NewConnectionProperties()
-	properties.SetClientConnectionName(c.ConnectionName)
-
-	config := amqp091.Config{
-		Vhost:      c.Vhost,
-		ChannelMax: c.Channels,
-		Heartbeat:  1 * time.Second,
-		Properties: properties,
-		Dial:       amqp091.DefaultDial(10 * time.Second),
-	}
-
-	// TODO: reuse connection URI
+func (c *connection) connect() func(ctx context.Context) error {
 	connectionURI := fmt.Sprintf(
 		"amqp://%s:%s@%s:%d",
 		c.User,
@@ -167,33 +143,59 @@ func (c *connection) connect(ctx context.Context) error {
 		c.Port,
 	)
 
-	conn, err := amqp091.DialConfig(connectionURI, config)
-	if err != nil {
-		c.onError(&ConnectInitError{Err: err})
-		return err
-	}
+	properties := amqp091.NewConnectionProperties()
+	properties.SetClientConnectionName(c.ConnectionName)
 
-	defer c.closing.Store(false)
-	c.conn.Store(conn)
-
-	go c.handleReconnect(ctx, conn)
-
-	if err = c.onConnectionReady(ctx, conn); err != nil {
-		if c.onError != nil {
-			c.onError(&ConnectInitError{Err: err})
+	return func(ctx context.Context) error {
+		if c.onBeforeConnectionReady != nil {
+			if err := c.onBeforeConnectionReady(ctx); err != nil {
+				if c.onError != nil {
+					c.onError(&OnBeforeConnectError{Err: err})
+				}
+				return err
+			}
 		}
 
-		return err
-	}
+		if err := c.connectionDispose(); err != nil && c.onError != nil {
+			c.onError(&OnConnectionCloseError{Err: err})
+		}
 
-	return nil
+		config := amqp091.Config{
+			Vhost:      c.Vhost,
+			ChannelMax: c.Channels,
+			Heartbeat:  1 * time.Second,
+			Properties: properties,
+			Dial:       amqp091.DefaultDial(10 * time.Second),
+		}
+
+		conn, err := amqp091.DialConfig(connectionURI, config)
+		if err != nil {
+			c.onError(&ConnectInitError{Err: err})
+			return err
+		}
+
+		defer c.closing.Store(false)
+		c.conn.Store(conn)
+
+		go c.handleReconnect(ctx, conn, c.connect())
+
+		if err = c.onConnectionReady(ctx, conn); err != nil {
+			if c.onError != nil {
+				c.onError(&ConnectInitError{Err: err})
+			}
+
+			return err
+		}
+
+		return nil
+	}
 }
 
 func (c *connection) connectionDispose() error {
 	c.closing.Store(true)
 	conn := c.conn.Load()
 
-	if conn.IsClosed() {
+	if conn == nil || conn.IsClosed() {
 		return nil
 	}
 

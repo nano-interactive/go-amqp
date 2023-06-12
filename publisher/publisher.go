@@ -57,6 +57,8 @@ func (publisher *Publisher[T]) onConnectionReady(cfg Config[T]) connection.OnCon
 		}
 
 		publisher.wg.Add(1)
+		publisher.ch = chOrigin
+		publisher.ready.Unlock()
 		go func() {
 			defer publisher.wg.Done()
 			errCh := make(chan error)
@@ -111,10 +113,6 @@ func (publisher *Publisher[T]) onConnectionReady(cfg Config[T]) connection.OnCon
 				}
 			}
 		}()
-
-		publisher.ch = chOrigin
-		publisher.ready.Unlock()
-
 		return nil
 	}
 }

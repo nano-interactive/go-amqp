@@ -35,7 +35,6 @@ func (m Message) GetRoutingKey() string {
 	return ""
 }
 
-
 func main() {
 	connConfig := connection.Config{
 		Host:              "127.0.0.1",
@@ -50,7 +49,6 @@ func main() {
 	}
 
 	ctx := context.Background()
-
 
 	pub, err := publisher.New[Message](
 		publisher.WithContext[Message](ctx),
@@ -87,7 +85,4 @@ func main() {
 	if err = pub.Close(); err != nil {
 		panic(err)
 	}
-
-	fmt.Printf("[INFO]: Waiting 20 more seconds\n")
-	time.Sleep(20 * time.Second)
 }
