@@ -11,6 +11,7 @@ import (
 
 type (
 	QueueConfig struct {
+		QueueName     string
 		Workers       int
 		PrefetchCount int
 	}
@@ -49,7 +50,6 @@ func newQueue(
 	queue.connection = conn
 	return queue, nil
 }
-
 
 func (q *queue) Close() error {
 	return q.connection.Close()

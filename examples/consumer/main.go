@@ -17,15 +17,11 @@ type Message struct {
 	Name string `json:"name"`
 }
 
-func (m Message) GetQueueName() string {
-	return "testing_queue"
-}
-
 var cnt atomic.Uint64
 
 func handler(ctx context.Context, msg Message) error {
 	defer cnt.Add(1)
-	// fmt.Printf("[INFO] Message received: %d %s\n", cnt.Load(), msg.Name)
+	fmt.Printf("[INFO] Message received: %d %s\n", cnt.Load(), msg.Name)
 	return nil
 }
 
@@ -46,7 +42,7 @@ func main() {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 
-	c, err := consumer.New(handler,
+	c, err := consumer.NewFunc(handler,
 		consumer.WithContext(ctx),
 		consumer.WithConnectionOptions(connection.Config{
 			Host:              "127.0.0.1",
@@ -63,6 +59,7 @@ func main() {
 		consumer.WithQueueConfig(consumer.QueueConfig{
 			Workers:       1,
 			PrefetchCount: 128,
+			QueueName:     "testing_queue",
 		}),
 	)
 	if err != nil {

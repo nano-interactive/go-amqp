@@ -24,18 +24,6 @@ type Message struct {
 	Name string `json:"name"`
 }
 
-func (m Message) GetExchangeName() string {
-	return "test"
-}
-
-func (m Message) GetExchangeType() publisher.ExchangeType {
-	return publisher.ExchangeTypeFanout
-}
-
-func (m Message) GetRoutingKey() string {
-	return ""
-}
-
 func main() {
 	connConfig := connection.Config{
 		Host:              "127.0.0.1",
@@ -56,6 +44,7 @@ func main() {
 		publisher.WithConnectionOptions[Message](connConfig),
 		publisher.WithLogger[Message](&logger{}),
 		publisher.WithBufferedMessages[Message](1000),
+		publisher.WithExchangeName[Message]("testing_publisher"),
 	)
 	if err != nil {
 		panic(err)
@@ -64,7 +53,7 @@ func main() {
 	fmt.Print("[INFO]: Publisher Created")
 
 	message := Message{
-		Name: "Dusan",
+		Name: "Nano Interactive",
 	}
 
 	errCount := 0

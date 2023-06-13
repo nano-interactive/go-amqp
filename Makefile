@@ -27,3 +27,14 @@ fmt:
 
 gosec:
 	@gosec ./...
+
+.PHONY: build
+build: example-consumer example-publisher
+
+.PHONY: example-consumer
+example-consumer:
+	@go build -o ./bin/example-consumer ./examples/consumer
+
+.PHONY: example-publisher
+example-publisher:
+	@go build -o ./bin/example-publisher ./examples/publisher

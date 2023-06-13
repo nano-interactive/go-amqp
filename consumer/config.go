@@ -11,9 +11,8 @@ type Config struct {
 	ctx               context.Context
 	logger            amqp.Logger
 	onError           connection.OnErrorFunc
-	queueName         string
-	connectionOptions connection.Config
 	queueConfig       QueueConfig
+	connectionOptions connection.Config
 }
 
 type Option func(*Config)
@@ -21,12 +20,6 @@ type Option func(*Config)
 func WithQueueConfig(cfg QueueConfig) Option {
 	return func(c *Config) {
 		c.queueConfig = cfg
-	}
-}
-
-func WithQueueName(queueName string) Option {
-	return func(c *Config) {
-		c.queueName = queueName
 	}
 }
 

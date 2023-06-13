@@ -53,7 +53,15 @@ func watchdog(
 			}
 
 			wg.Add(1)
-			go listener(ctx, &wg, cfg.queueName, cfg.queueConfig, cfg.logger, conn, handler, workerExit)
+
+			l := newListener(&wg, cfg.queueConfig, conn, handler, workerExit)
+
+			go func() {
+				defer l.Close()
+				if err := l.Listen(ctx, cfg.logger); err != nil {
+					onError(fmt.Errorf("failed to start listener: %v", err))
+				}
+			}()
 		}
 	}
 }

@@ -19,31 +19,26 @@ import (
 var ErrChannelNotReady = errors.New("publishing channel is not ready")
 
 type (
-	Message interface {
-		GetExchangeName() string
-		GetExchangeType() ExchangeType
-		GetRoutingKey() string
-	}
-
-	Pub[T Message] interface {
+	Pub[T any] interface {
 		io.Closer
 		Publish(ctx context.Context, msg T) error
 	}
 
-	Publisher[T Message] struct {
-		conn       *connection.Connection
-		serializer serializer.Serializer[T]
-		ch         *amqp091.Channel
-		cancel     context.CancelFunc
-		ready      sync.RWMutex
-		wg         sync.WaitGroup
+	Publisher[T any] struct {
+		serializer   serializer.Serializer[T]
+		conn         *connection.Connection
+		ch           *amqp091.Channel
+		cancel       context.CancelFunc
+		exchangeName string
+		routingKey   string
+		wg           sync.WaitGroup
+		ready        sync.RWMutex
 	}
 )
 
 func (publisher *Publisher[T]) onConnectionReady(cfg Config[T]) connection.OnConnectionReady {
-	var msg T
-	exchangeName := msg.GetExchangeName()
-	exchangeType := msg.GetExchangeType().String()
+	exchangeName := cfg.exchangeName
+	exchangeType := cfg.exchangeType.String()
 
 	return func(ctx context.Context, connection *amqp091.Connection) error {
 		chOrigin, notifyClose, err := newChannel(
@@ -81,7 +76,7 @@ func (publisher *Publisher[T]) onConnectionReady(cfg Config[T]) connection.OnCon
 					chOrigin, notifyClose, err = newChannel(
 						connection,
 						exchangeName,
-						msg.GetExchangeType().String(),
+						exchangeType,
 						cfg.logger,
 					)
 
@@ -148,13 +143,16 @@ func newChannel(
 	return ch, notifyClose, nil
 }
 
-func New[T Message](options ...Option[T]) (*Publisher[T], error) {
+func New[T any](options ...Option[T]) (*Publisher[T], error) {
 	cfg := Config[T]{
 		serializer:        serializer.JsonSerializer[T]{},
 		logger:            amqp.EmptyLogger{},
 		messageBuffering:  1,
 		connectionOptions: connection.DefaultConfig,
 		ctx:               context.Background(),
+		exchangeType:      ExchangeTypeFanout,
+		exchangeName:      "",
+		routingKey:        "",
 		onError: func(err error) {
 			if errors.Is(err, connection.ErrRetriesExhausted) {
 				panic(err)
@@ -168,11 +166,17 @@ func New[T Message](options ...Option[T]) (*Publisher[T], error) {
 		option(&cfg)
 	}
 
+	if cfg.exchangeName == "" {
+		return nil, errors.New("exchange name is required")
+	}
+
 	ctx, cancel := context.WithCancel(cfg.ctx)
 
 	publisher := &Publisher[T]{
 		serializer: cfg.serializer,
 		cancel:     cancel,
+		exchangeName: cfg.exchangeName,
+		routingKey:   cfg.routingKey,
 	}
 
 	conn, err := connection.New(ctx, cfg.connectionOptions, connection.Events{
@@ -201,8 +205,8 @@ func (p *Publisher[T]) Publish(ctx context.Context, msg T) error {
 
 	return p.ch.PublishWithContext(
 		ctx,
-		msg.GetExchangeName(),
-		msg.GetRoutingKey(),
+		p.exchangeName,
+		p.routingKey,
 		true,
 		false,
 		amqp091.Publishing{

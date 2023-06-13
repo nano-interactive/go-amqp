@@ -12,9 +12,7 @@ import (
 )
 
 type (
-	Message interface {
-		GetQueueName() string
-	}
+	Message interface{}
 
 	Sub[T Message] interface {
 		io.Closer
@@ -26,12 +24,11 @@ type (
 )
 
 func NewRaw[T Message](handler RawHandler, options ...Option) (Consumer[T], error) {
-	var msg T
-
 	cfg := Config{
 		queueConfig: QueueConfig{
 			PrefetchCount: 128,
 			Workers:       1,
+			QueueName:     "",
 		},
 		logger: amqp.EmptyLogger{},
 		ctx:    context.Background(),
@@ -43,11 +40,14 @@ func NewRaw[T Message](handler RawHandler, options ...Option) (Consumer[T], erro
 			fmt.Fprintf(os.Stderr, "[ERROR]: An error has occurred! %v\n", err)
 		},
 		connectionOptions: connection.DefaultConfig,
-		queueName:         msg.GetQueueName(),
 	}
 
 	for _, o := range options {
 		o(&cfg)
+	}
+
+	if cfg.queueConfig.QueueName == "" {
+		return Consumer[T]{}, errors.New("queue name is required... Please call WithQueueName(queueName) option function")
 	}
 
 	queue, err := newQueue(cfg.ctx, cfg, handler)
@@ -64,7 +64,7 @@ func NewRawFunc[T Message](h RawHandlerFunc, options ...Option) (Consumer[T], er
 	return NewRaw[T](h, options...)
 }
 
-func New[T Message](h HandlerFunc[T], options ...Option) (Consumer[T], error) {
+func NewFunc[T Message](h HandlerFunc[T], options ...Option) (Consumer[T], error) {
 	privHandler := handler[T]{
 		handler: h,
 	}
@@ -72,7 +72,7 @@ func New[T Message](h HandlerFunc[T], options ...Option) (Consumer[T], error) {
 	return NewRaw[T](privHandler, options...)
 }
 
-func NewHandler[T Message](h Handler[T], options ...Option) (Consumer[T], error) {
+func New[T Message](h Handler[T], options ...Option) (Consumer[T], error) {
 	privHandler := handler[T]{
 		handler: h,
 	}

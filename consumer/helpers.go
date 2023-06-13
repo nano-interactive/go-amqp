@@ -8,34 +8,61 @@ import (
 	"github.com/rabbitmq/amqp091-go"
 )
 
-func listener(
-	ctx context.Context,
+type listener struct {
+	handler       RawHandler
+	wg            *sync.WaitGroup
+	conn          *amqp091.Connection
+	workerExit    chan<- struct{}
+	cfg           QueueConfig
+	shouldRestart bool
+}
+
+func newListener(
 	wg *sync.WaitGroup,
-	queueName string,
 	cfg QueueConfig,
-	logger amqp.Logger,
 	conn *amqp091.Connection,
 	handler RawHandler,
 	workerExit chan<- struct{},
-) {
-	defer wg.Done()
+) *listener {
+	return &listener{
+		wg:            wg,
+		cfg:           cfg,
+		conn:          conn,
+		handler:       handler,
+		workerExit:    workerExit,
+		shouldRestart: false,
+	}
+}
 
-	channel, err := conn.Channel()
+func (l *listener) Close() error {
+	if l.shouldRestart {
+		l.workerExit <- struct{}{}
+	}
+	return nil
+}
+
+func (l *listener) Listen(ctx context.Context, logger amqp.Logger) error {
+	defer l.wg.Done()
+
+	channel, err := l.conn.Channel()
 	if err != nil {
-		workerExit <- struct{}{}
-		return
+		l.shouldRestart = true
+		return err
 	}
 
-	if err = channel.Qos(cfg.PrefetchCount, 0, false); err != nil {
-		workerExit <- struct{}{}
-		return
+	// notifyClose := channel.NotifyClose(make(chan *amqp091.Error))
+	// go l.handleChannelClose(ctx, notifyClose)
+
+	if err = channel.Qos(l.cfg.PrefetchCount, 0, false); err != nil {
+		l.shouldRestart = true
+		return err
 	}
 
-	dataStream, err := channel.Consume(queueName, "", false, false, false, false, nil)
+	dataStream, err := channel.Consume(l.cfg.QueueName, "", false, false, false, false, nil)
 	if err != nil {
-		logger.Error("Failed to consume queue(%s): %v", queueName, err)
-		workerExit <- struct{}{}
-		return
+		logger.Error("Failed to consume queue(%s): %v", l.cfg.QueueName, err)
+		l.shouldRestart = true
+		return err
 	}
 
 	defer func(channel *amqp091.Channel) {
@@ -48,15 +75,18 @@ func listener(
 		select {
 		case delivery, more := <-dataStream:
 			if !more {
-				return
+				l.shouldRestart = true
+				return nil
 			}
 
-			if err := handler.Handle(ctx, &delivery); err != nil {
+			if err := l.handler.Handle(ctx, &delivery); err != nil {
 				logger.Error("Failed to handle message: %v", err)
 				continue
 			}
 		case <-ctx.Done():
-			return
+			l.shouldRestart = false
+
+			return nil
 		}
 	}
 }

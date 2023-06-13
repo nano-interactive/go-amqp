@@ -2,7 +2,7 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "GoLibraryTemplate: Race Test",
+            "label": "go-amqp: Race Test",
             "type": "shell",
             "command": "go",
             "args": [
@@ -17,7 +17,7 @@
             "group": "test"
         },
         {
-            "label": "GoLibraryTemplate: Test",
+            "label": "go-amqp: Test",
             "type": "shell",
             "command": "go",
             "args": [
@@ -31,7 +31,7 @@
             "group": "test"
         },
         {
-            "label": "GoLibraryTemplate: Format",
+            "label": "go-amqp: Format",
             "type": "shell",
             "command": "gofumpt",
             "args": [
@@ -43,7 +43,7 @@
             "problemMatcher": []
         },
         {
-            "label": "GoLibraryTemplate: Lint",
+            "label": "go-amqp: Lint",
             "type": "shell",
             "command": "golangci-lint",
             "args": [
@@ -52,7 +52,7 @@
             "group": "none"
         },
         {
-            "label": "GoLibraryTemplate: GoMod Tidy",
+            "label": "go-amqp: GoMod Tidy",
             "type": "shell",
             "command": "go",
             "args": [
@@ -63,7 +63,7 @@
             "problemMatcher": []
         },
         {
-            "label": "GoLibraryTemplate: Security Check",
+            "label": "go-amqp: Security Check",
             "type": "shell",
             "command": "gosec",
             "args": [
