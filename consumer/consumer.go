@@ -65,22 +65,16 @@ func NewRawFunc[T Message](h RawHandlerFunc, options ...Option) (Consumer[T], er
 }
 
 func New[T Message](h HandlerFunc[T], options ...Option) (Consumer[T], error) {
-	var msg T
-
 	privHandler := handler[T]{
-		handler:   h,
-		queueName: msg.GetQueueName(),
+		handler: h,
 	}
 
 	return NewRaw[T](privHandler, options...)
 }
 
 func NewHandler[T Message](h Handler[T], options ...Option) (Consumer[T], error) {
-	var msg T
-
 	privHandler := handler[T]{
-		queueName: msg.GetQueueName(),
-		handler:   h,
+		handler: h,
 	}
 
 	return NewRaw[T](privHandler, options...)

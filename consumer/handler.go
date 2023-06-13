@@ -15,7 +15,6 @@ type (
 
 	handler[T Message] struct {
 		handler   Handler[T]
-		queueName string
 	}
 
 	Handler[T Message] interface {
