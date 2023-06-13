@@ -12,7 +12,7 @@ import (
 func watchdog(
 	ctx context.Context,
 	conn *amqp091.Connection,
-	workerExit chan struct{},
+	workerExit chan int,
 	onError connection.OnErrorFunc,
 	cfg Config,
 	handler RawHandler,
@@ -28,11 +28,11 @@ func watchdog(
 			cancel()
 			wg.Wait()
 			return
-		case <-workerExit:
+		case id := <-workerExit:
 			channel, err := conn.Channel()
 			if err != nil {
 				onError(fmt.Errorf("failed to create channel, trying again: %v", err))
-				workerExit <- struct{}{}
+				workerExit <- id
 				continue
 			}
 
@@ -42,21 +42,29 @@ func watchdog(
 				if !channel.IsClosed() {
 					_ = channel.Close()
 				}
-				workerExit <- struct{}{}
+				workerExit <- id
 				continue
 			}
 
 			if err = channel.Close(); err != nil {
 				onError(fmt.Errorf("failed to close channel, trying again: %v", err))
-				workerExit <- struct{}{}
+				workerExit <- id
 				continue
 			}
 
 			wg.Add(1)
 
-			l := newListener(&wg, cfg.queueConfig, conn, handler, workerExit)
+			l := newListener(id, &wg, cfg.queueConfig, conn, handler, workerExit, cfg.onMessageError)
 
 			go func() {
+				if cfg.onListenerStart != nil {
+					cfg.onListenerStart(ctx, id)
+				}
+
+				if cfg.onListenerExit != nil {
+					defer cfg.onListenerExit(ctx, id)
+				}
+
 				defer l.Close()
 				if err := l.Listen(ctx, cfg.logger); err != nil {
 					onError(fmt.Errorf("failed to start listener: %v", err))

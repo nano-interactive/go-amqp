@@ -22,16 +22,12 @@ type (
 	}
 )
 
-func newQueue(
-	base context.Context,
-	cfg Config,
-	handler RawHandler,
-) (*queue, error) {
+func newQueue(base context.Context, cfg Config, handler RawHandler) (*queue, error) {
 	conn, err := connection.New(base, cfg.connectionOptions, connection.Events{
 		OnConnectionReady: func(ctx context.Context, connection *amqp091.Connection) error {
-			watchDog := make(chan struct{}, cfg.queueConfig.Workers)
+			watchDog := make(chan int, cfg.queueConfig.Workers)
 			for i := 0; i < cfg.queueConfig.Workers; i++ {
-				watchDog <- struct{}{}
+				watchDog <- i + 1
 			}
 
 			go watchdog(ctx, connection, watchDog, cfg.onError, cfg, handler)

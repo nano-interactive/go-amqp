@@ -3,6 +3,8 @@ package consumer
 import (
 	"context"
 
+	"github.com/rabbitmq/amqp091-go"
+
 	"github.com/nano-interactive/go-amqp"
 	"github.com/nano-interactive/go-amqp/connection"
 )
@@ -11,11 +13,32 @@ type Config struct {
 	ctx               context.Context
 	logger            amqp.Logger
 	onError           connection.OnErrorFunc
+	onMessageError    func(context.Context, *amqp091.Delivery, error)
+	onListenerStart   func(context.Context, int)
+	onListenerExit    func(context.Context, int)
 	queueConfig       QueueConfig
 	connectionOptions connection.Config
 }
 
 type Option func(*Config)
+
+func WithOnListenerStart(onListenerStart func(context.Context, int)) Option {
+	return func(c *Config) {
+		c.onListenerStart = onListenerStart
+	}
+}
+
+func WithOnListenerExit(onListenerExit func(context.Context, int)) Option {
+	return func(c *Config) {
+		c.onListenerExit = onListenerExit
+	}
+}
+
+func WithOnMessageError(onMessageError func(context.Context, *amqp091.Delivery, error)) Option {
+	return func(c *Config) {
+		c.onMessageError = onMessageError
+	}
+}
 
 func WithQueueConfig(cfg QueueConfig) Option {
 	return func(c *Config) {

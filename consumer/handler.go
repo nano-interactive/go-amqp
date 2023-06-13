@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 
 	"github.com/rabbitmq/amqp091-go"
-	"go.uber.org/multierr"
 )
 
 type (
@@ -14,7 +13,7 @@ type (
 	}
 
 	handler[T Message] struct {
-		handler   Handler[T]
+		handler Handler[T]
 	}
 
 	Handler[T Message] interface {
@@ -41,28 +40,15 @@ func (h handler[T]) Handle(ctx context.Context, delivery *amqp091.Delivery) erro
 		fallthrough
 	default:
 		if err := json.Unmarshal(delivery.Body, &body); err != nil {
-			var multiErr error
-
-			multiErr = multierr.Append(multiErr, err)
-
-			if ackErr := delivery.Ack(false); ackErr != nil {
-				multiErr = multierr.Append(err, ackErr)
-			}
-
-			return multiErr
+			_ = delivery.Ack(false)
+			return err
 		}
 	}
 
 	if err := h.handler.Handle(ctx, body); err != nil {
-		var multiErr error
-
-		multiErr = multierr.Append(multiErr, err)
-
 		if ackErr := delivery.Nack(false, true); ackErr != nil {
-			multiErr = multierr.Append(err, ackErr)
+			return err
 		}
-
-		return multiErr
 	}
 
 	if ackErr := delivery.Ack(false); ackErr != nil {

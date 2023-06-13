@@ -9,34 +9,40 @@ import (
 )
 
 type listener struct {
-	handler       RawHandler
-	wg            *sync.WaitGroup
-	conn          *amqp091.Connection
-	workerExit    chan<- struct{}
-	cfg           QueueConfig
-	shouldRestart bool
+	handler        RawHandler
+	wg             *sync.WaitGroup
+	conn           *amqp091.Connection
+	workerExit     chan<- int
+	onMessageError func(context.Context, *amqp091.Delivery, error)
+	cfg            QueueConfig
+	id             int
+	shouldRestart  bool
 }
 
 func newListener(
+	id int,
 	wg *sync.WaitGroup,
 	cfg QueueConfig,
 	conn *amqp091.Connection,
 	handler RawHandler,
-	workerExit chan<- struct{},
+	workerExit chan<- int,
+	onMessageError func(context.Context, *amqp091.Delivery, error),
 ) *listener {
 	return &listener{
-		wg:            wg,
-		cfg:           cfg,
-		conn:          conn,
-		handler:       handler,
-		workerExit:    workerExit,
-		shouldRestart: false,
+		id:             id,
+		wg:             wg,
+		cfg:            cfg,
+		conn:           conn,
+		handler:        handler,
+		workerExit:     workerExit,
+		shouldRestart:  false,
+		onMessageError: onMessageError,
 	}
 }
 
 func (l *listener) Close() error {
 	if l.shouldRestart {
-		l.workerExit <- struct{}{}
+		l.workerExit <- l.id
 	}
 	return nil
 }
@@ -49,9 +55,6 @@ func (l *listener) Listen(ctx context.Context, logger amqp.Logger) error {
 		l.shouldRestart = true
 		return err
 	}
-
-	// notifyClose := channel.NotifyClose(make(chan *amqp091.Error))
-	// go l.handleChannelClose(ctx, notifyClose)
 
 	if err = channel.Qos(l.cfg.PrefetchCount, 0, false); err != nil {
 		l.shouldRestart = true
@@ -80,7 +83,9 @@ func (l *listener) Listen(ctx context.Context, logger amqp.Logger) error {
 			}
 
 			if err := l.handler.Handle(ctx, &delivery); err != nil {
-				logger.Error("Failed to handle message: %v", err)
+				if l.onMessageError != nil {
+					l.onMessageError(ctx, &delivery, err)
+				}
 				continue
 			}
 		case <-ctx.Done():

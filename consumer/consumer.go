@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 
 	"github.com/nano-interactive/go-amqp"
 	"github.com/nano-interactive/go-amqp/connection"
@@ -24,6 +25,12 @@ type (
 )
 
 func NewRaw[T Message](handler RawHandler, options ...Option) (Consumer[T], error) {
+	var msg T
+
+	if reflect.ValueOf(msg).Kind() == reflect.Ptr {
+		return Consumer[T]{}, errors.New("message type must be a value type")
+	}
+
 	cfg := Config{
 		queueConfig: QueueConfig{
 			PrefetchCount: 128,
@@ -40,6 +47,9 @@ func NewRaw[T Message](handler RawHandler, options ...Option) (Consumer[T], erro
 			fmt.Fprintf(os.Stderr, "[ERROR]: An error has occurred! %v\n", err)
 		},
 		connectionOptions: connection.DefaultConfig,
+		onMessageError:    nil,
+		onListenerStart:   nil,
+		onListenerExit:    nil,
 	}
 
 	for _, o := range options {
