@@ -11,6 +11,7 @@ import (
 
 	"github.com/nano-interactive/go-amqp/connection"
 	"github.com/nano-interactive/go-amqp/consumer"
+	"github.com/rabbitmq/amqp091-go"
 )
 
 type Message struct {
@@ -43,6 +44,9 @@ func main() {
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 
 	c, err := consumer.NewFunc(handler,
+		consumer.WithOnMessageError(func(ctx context.Context, d *amqp091.Delivery, err error) {
+			fmt.Fprintf(os.Stderr, "[ERROR] Message error: %s\n", err)
+		}),
 		consumer.WithContext(ctx),
 		consumer.WithConnectionOptions(connection.Config{
 			Host:              "127.0.0.1",

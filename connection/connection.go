@@ -96,7 +96,7 @@ func (c *Connection) handleReconnect(ctx context.Context, connection *amqp091.Co
 				return
 			}
 
-			// No need to reconnect if connection is not closed ( this error means that channel is closed)
+			// No need to reconnect if connection is not closed (this error means that channel is closed)
 			if !errors.Is(amqpErr, amqp091.ErrClosed) && !c.conn.Load().IsClosed() {
 				continue
 			}
@@ -111,6 +111,7 @@ func (c *Connection) handleReconnect(ctx context.Context, connection *amqp091.Co
 
 			if i >= c.ReconnectRetry {
 				c.onError(ErrRetriesExhausted)
+				return
 			}
 		}
 	}

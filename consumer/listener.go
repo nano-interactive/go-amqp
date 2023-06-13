@@ -28,6 +28,10 @@ func newListener(
 	workerExit chan<- int,
 	onMessageError func(context.Context, *amqp091.Delivery, error),
 ) *listener {
+	if onMessageError == nil {
+		panic("onMessageError is required")
+	}
+
 	return &listener{
 		id:             id,
 		wg:             wg,
@@ -83,9 +87,7 @@ func (l *listener) Listen(ctx context.Context, logger amqp.Logger) error {
 			}
 
 			if err := l.handler.Handle(ctx, &delivery); err != nil {
-				if l.onMessageError != nil {
-					l.onMessageError(ctx, &delivery, err)
-				}
+				l.onMessageError(ctx, &delivery, err)
 				continue
 			}
 		case <-ctx.Done():
