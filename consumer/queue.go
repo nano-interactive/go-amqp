@@ -27,10 +27,6 @@ func newQueue(
 	cfg Config,
 	handler RawHandler,
 ) (*queue, error) {
-	queue := &queue{
-		logger:    cfg.logger,
-	}
-
 	conn, err := connection.New(base, cfg.connectionOptions, connection.Events{
 		OnConnectionReady: func(ctx context.Context, connection *amqp091.Connection) error {
 			watchDog := make(chan struct{}, cfg.queueConfig.Workers)
@@ -47,8 +43,11 @@ func newQueue(
 	if err != nil {
 		return nil, err
 	}
-	queue.connection = conn
-	return queue, nil
+
+	return &queue{
+		logger:     cfg.logger,
+		connection: conn,
+	}, nil
 }
 
 func (q *queue) Close() error {
