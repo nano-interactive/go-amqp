@@ -90,7 +90,7 @@ func New[T Message](h Handler[T], options ...Option) (Consumer[T], error) {
 	return NewRaw[T](privHandler, options...)
 }
 
-func (c *Consumer[T]) Close() error {
+func (c Consumer[T]) Close() error {
 	if err := c.queues.Close(); err != nil {
 		return err
 	}
