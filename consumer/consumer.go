@@ -75,16 +75,46 @@ func NewRawFunc[T Message](h RawHandlerFunc, options ...Option) (Consumer[T], er
 }
 
 func NewFunc[T Message](h HandlerFunc[T], options ...Option) (Consumer[T], error) {
-	privHandler := handler[T]{
-		handler: h,
+	var privHandler RawHandler
+
+	cfg := Config{}
+
+	for _, o := range options {
+		o(&cfg)
+	}
+
+	if cfg.retryCount > 0 {
+		privHandler = retryHandler[T]{
+			handler:    h,
+			retryCount: uint32(cfg.retryCount),
+		}
+	} else {
+		privHandler = handler[T]{
+			handler: h,
+		}
 	}
 
 	return NewRaw[T](privHandler, options...)
 }
 
 func New[T Message](h Handler[T], options ...Option) (Consumer[T], error) {
-	privHandler := handler[T]{
-		handler: h,
+	var privHandler RawHandler
+
+	cfg := Config{}
+
+	for _, o := range options {
+		o(&cfg)
+	}
+
+	if cfg.retryCount > 0 {
+		privHandler = retryHandler[T]{
+			handler:    h,
+			retryCount: uint32(cfg.retryCount),
+		}
+	} else {
+		privHandler = handler[T]{
+			handler: h,
+		}
 	}
 
 	return NewRaw[T](privHandler, options...)

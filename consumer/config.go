@@ -18,9 +18,16 @@ type Config struct {
 	onListenerExit    func(context.Context, int)
 	queueConfig       QueueConfig
 	connectionOptions connection.Config
+	retryCount        uint32
 }
 
 type Option func(*Config)
+
+func WithRetryMessageCountCount(count uint32) Option {
+	return func(c *Config) {
+		c.retryCount = count
+	}
+}
 
 func WithOnListenerStart(onListenerStart func(context.Context, int)) Option {
 	return func(c *Config) {
