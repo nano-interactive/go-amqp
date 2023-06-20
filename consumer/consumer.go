@@ -10,6 +10,7 @@ import (
 
 	"github.com/nano-interactive/go-amqp"
 	"github.com/nano-interactive/go-amqp/connection"
+	"github.com/nano-interactive/go-amqp/serializer"
 )
 
 type (
@@ -24,21 +25,23 @@ type (
 	}
 )
 
-func NewRaw[T Message](handler RawHandler, options ...Option) (Consumer[T], error) {
+func NewRaw[T Message](handler RawHandler, options ...Option[T]) (Consumer[T], error) {
 	var msg T
 
 	if reflect.ValueOf(msg).Kind() == reflect.Ptr {
 		return Consumer[T]{}, errors.New("message type must be a value type")
 	}
 
-	cfg := Config{
+	cfg := Config[T]{
 		queueConfig: QueueConfig{
 			PrefetchCount: 128,
 			Workers:       1,
 			QueueName:     "",
 		},
-		logger: amqp.EmptyLogger{},
-		ctx:    context.Background(),
+		retryCount: 1,
+		serializer: serializer.JsonSerializer[T]{},
+		logger:     amqp.EmptyLogger{},
+		ctx:        context.Background(),
 		onError: func(err error) {
 			if errors.Is(err, connection.ErrRetriesExhausted) {
 				panic(err)
@@ -70,20 +73,20 @@ func NewRaw[T Message](handler RawHandler, options ...Option) (Consumer[T], erro
 	}, nil
 }
 
-func NewRawFunc[T Message](h RawHandlerFunc, options ...Option) (Consumer[T], error) {
+func NewRawFunc[T Message](h RawHandlerFunc, options ...Option[T]) (Consumer[T], error) {
 	return NewRaw[T](h, options...)
 }
 
-func NewFunc[T Message](h HandlerFunc[T], options ...Option) (Consumer[T], error) {
+func NewFunc[T Message](h HandlerFunc[T], options ...Option[T]) (Consumer[T], error) {
 	var privHandler RawHandler
 
-	cfg := Config{}
+	cfg := Config[T]{}
 
 	for _, o := range options {
 		o(&cfg)
 	}
 
-	if cfg.retryCount > 0 {
+	if cfg.retryCount > 1 {
 		privHandler = retryHandler[T]{
 			handler:    h,
 			retryCount: uint32(cfg.retryCount),
@@ -97,10 +100,10 @@ func NewFunc[T Message](h HandlerFunc[T], options ...Option) (Consumer[T], error
 	return NewRaw[T](privHandler, options...)
 }
 
-func New[T Message](h Handler[T], options ...Option) (Consumer[T], error) {
+func New[T Message](h Handler[T], options ...Option[T]) (Consumer[T], error) {
 	var privHandler RawHandler
 
-	cfg := Config{}
+	cfg := Config[T]{}
 
 	for _, o := range options {
 		o(&cfg)

@@ -44,11 +44,11 @@ func main() {
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 
 	c, err := consumer.NewFunc(handler,
-		consumer.WithOnMessageError(func(ctx context.Context, d *amqp091.Delivery, err error) {
+		consumer.WithOnMessageError[Message](func(ctx context.Context, d *amqp091.Delivery, err error) {
 			fmt.Fprintf(os.Stderr, "[ERROR] Message error: %s\n", err)
 		}),
-		consumer.WithContext(ctx),
-		consumer.WithConnectionOptions(connection.Config{
+		consumer.WithContext[Message](ctx),
+		consumer.WithConnectionOptions[Message](connection.Config{
 			Host:              "127.0.0.1",
 			Port:              5672,
 			User:              "guest",
@@ -59,8 +59,8 @@ func main() {
 			ReconnectInterval: 1 * time.Second,
 			Channels:          1000,
 		}),
-		consumer.WithLogger(logger{}),
-		consumer.WithQueueConfig(consumer.QueueConfig{
+		consumer.WithLogger[Message](logger{}),
+		consumer.WithQueueConfig[Message](consumer.QueueConfig{
 			Workers:       1,
 			PrefetchCount: 128,
 			QueueName:     "testing_queue",

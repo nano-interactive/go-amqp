@@ -22,7 +22,7 @@ type (
 	}
 )
 
-func newQueue(base context.Context, cfg Config, handler RawHandler) (*queue, error) {
+func newQueue[T any](base context.Context, cfg Config[T], handler RawHandler) (*queue, error) {
 	conn, err := connection.New(base, cfg.connectionOptions, connection.Events{
 		OnConnectionReady: func(ctx context.Context, connection *amqp091.Connection) error {
 			watchDog := make(chan int, cfg.queueConfig.Workers)

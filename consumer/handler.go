@@ -2,9 +2,9 @@ package consumer
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 
+	"github.com/nano-interactive/go-amqp/serializer"
 	"github.com/rabbitmq/amqp091-go"
 )
 
@@ -18,10 +18,12 @@ type (
 	}
 
 	handler[T Message] struct {
-		handler Handler[T]
+		serializer serializer.Serializer[T]
+		handler    Handler[T]
 	}
 
 	retryHandler[T Message] struct {
+		serializer serializer.Serializer[T]
 		handler    Handler[T]
 		retryCount uint32
 	}
@@ -43,16 +45,15 @@ func (h RawHandlerFunc) Handle(ctx context.Context, body *amqp091.Delivery) erro
 }
 
 func (h handler[T]) Handle(ctx context.Context, delivery *amqp091.Delivery) error {
-	var body T
+	if delivery.ContentType != h.serializer.GetContentType() {
+		_ = delivery.Reject(false)
+		return errors.New("invalid content type")
+	}
 
-	switch delivery.ContentType {
-	case "application/json":
-		fallthrough
-	default:
-		if err := json.Unmarshal(delivery.Body, &body); err != nil {
-			_ = delivery.Reject(false)
-			return err
-		}
+	body, err := h.serializer.Unmarshal(delivery.Body)
+	if err != nil {
+		_ = delivery.Reject(false)
+		return err
 	}
 
 	if err := h.handler.Handle(ctx, body); err != nil {
@@ -76,16 +77,15 @@ func (h handler[T]) Handle(ctx context.Context, delivery *amqp091.Delivery) erro
 }
 
 func (h retryHandler[T]) Handle(ctx context.Context, delivery *amqp091.Delivery) error {
-	var body T
+	if delivery.ContentType != h.serializer.GetContentType() {
+		_ = delivery.Reject(false)
+		return errors.New("invalid content type")
+	}
 
-	switch delivery.ContentType {
-	case "application/json":
-		fallthrough
-	default:
-		if err := json.Unmarshal(delivery.Body, &body); err != nil {
-			_ = delivery.Reject(false)
-			return err
-		}
+	body, err := h.serializer.Unmarshal(delivery.Body)
+	if err != nil {
+		_ = delivery.Reject(false)
+		return err
 	}
 
 	if err := h.handler.Handle(ctx, body); err != nil {

@@ -7,12 +7,14 @@ import (
 
 	"github.com/nano-interactive/go-amqp"
 	"github.com/nano-interactive/go-amqp/connection"
+	"github.com/nano-interactive/go-amqp/serializer"
 )
 
-type Config struct {
+type Config[T any] struct {
 	ctx               context.Context
 	logger            amqp.Logger
 	onError           connection.OnErrorFunc
+	serializer 	  serializer.Serializer[T]
 	onMessageError    func(context.Context, *amqp091.Delivery, error)
 	onListenerStart   func(context.Context, int)
 	onListenerExit    func(context.Context, int)
@@ -21,58 +23,64 @@ type Config struct {
 	retryCount        uint32
 }
 
-type Option func(*Config)
+type Option[T any] func(*Config[T])
 
-func WithRetryMessageCountCount(count uint32) Option {
-	return func(c *Config) {
+func WithMessageDeserializer[T any](serializer serializer.Serializer[T]) Option[T] {
+	return func(c *Config[T]) {
+		c.serializer = serializer
+	}
+}
+
+func WithRetryMessageCountCount[T any](count uint32) Option[T] {
+	return func(c *Config[T]) {
 		c.retryCount = count
 	}
 }
 
-func WithOnListenerStart(onListenerStart func(context.Context, int)) Option {
-	return func(c *Config) {
+func WithOnListenerStart[T any](onListenerStart func(context.Context, int)) Option[T] {
+	return func(c *Config[T]) {
 		c.onListenerStart = onListenerStart
 	}
 }
 
-func WithOnListenerExit(onListenerExit func(context.Context, int)) Option {
-	return func(c *Config) {
+func WithOnListenerExit[T any](onListenerExit func(context.Context, int)) Option[T] {
+	return func(c *Config[T]) {
 		c.onListenerExit = onListenerExit
 	}
 }
 
-func WithOnMessageError(onMessageError func(context.Context, *amqp091.Delivery, error)) Option {
-	return func(c *Config) {
+func WithOnMessageError[T any](onMessageError func(context.Context, *amqp091.Delivery, error)) Option[T] {
+	return func(c *Config[T]) {
 		c.onMessageError = onMessageError
 	}
 }
 
-func WithQueueConfig(cfg QueueConfig) Option {
-	return func(c *Config) {
+func WithQueueConfig[T any](cfg QueueConfig) Option[T] {
+	return func(c *Config[T]) {
 		c.queueConfig = cfg
 	}
 }
 
-func WithLogger(logger amqp.Logger) Option {
-	return func(c *Config) {
+func WithLogger[T any](logger amqp.Logger) Option[T] {
+	return func(c *Config[T]) {
 		c.logger = logger
 	}
 }
 
-func WithOnErrorFunc(onError connection.OnErrorFunc) Option {
-	return func(c *Config) {
+func WithOnErrorFunc[T any](onError connection.OnErrorFunc) Option[T] {
+	return func(c *Config[T]) {
 		c.onError = onError
 	}
 }
 
-func WithContext(ctx context.Context) Option {
-	return func(c *Config) {
+func WithContext[T any](ctx context.Context) Option[T] {
+	return func(c *Config[T]) {
 		c.ctx = ctx
 	}
 }
 
-func WithConnectionOptions(connectionOptions connection.Config) Option {
-	return func(c *Config) {
+func WithConnectionOptions[T any](connectionOptions connection.Config) Option[T] {
+	return func(c *Config[T]) {
 		c.connectionOptions = connectionOptions
 	}
 }

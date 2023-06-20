@@ -173,8 +173,8 @@ func New[T any](options ...Option[T]) (*Publisher[T], error) {
 	ctx, cancel := context.WithCancel(cfg.ctx)
 
 	publisher := &Publisher[T]{
-		serializer: cfg.serializer,
-		cancel:     cancel,
+		serializer:   cfg.serializer,
+		cancel:       cancel,
 		exchangeName: cfg.exchangeName,
 		routingKey:   cfg.routingKey,
 	}

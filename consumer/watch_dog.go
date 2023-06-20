@@ -5,16 +5,17 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/nano-interactive/go-amqp/connection"
 	"github.com/rabbitmq/amqp091-go"
+
+	"github.com/nano-interactive/go-amqp/connection"
 )
 
-func watchdog(
+func watchdog[T any](
 	ctx context.Context,
 	conn *amqp091.Connection,
 	workerExit chan int,
 	onError connection.OnErrorFunc,
-	cfg Config,
+	cfg Config[T],
 	handler RawHandler,
 ) {
 	var wg sync.WaitGroup
@@ -46,10 +47,12 @@ func watchdog(
 				continue
 			}
 
-			if err = channel.Close(); err != nil {
-				onError(fmt.Errorf("failed to close channel, trying again: %v", err))
-				workerExit <- id
-				continue
+			if !channel.IsClosed() {
+				if err = channel.Close(); err != nil {
+					onError(fmt.Errorf("failed to close channel, trying again: %v", err))
+					workerExit <- id
+					continue
+				}
 			}
 
 			wg.Add(1)
