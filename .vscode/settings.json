@@ -7,30 +7,21 @@
     "CC": "gcc",
     "CXX": "g++"
   },
-  "go.docsTool": "guru",
   "go.diagnostic.vulncheck": "Imports",
   "go.disableConcurrentTests": false,
   "go.coverOnSave": true,
   "go.coverOnSingleTest": true,
   "go.coverOnSingleTestFile": true,
-  "go.gocodePackageLookupMode": "go",
   "go.inlayHints.assignVariableTypes": true,
   "go.inlayHints.compositeLiteralFields": true,
   "go.inlayHints.constantValues": true,
   "go.inlayHints.compositeLiteralTypes": false,
-  "go.liveErrors": {
-    "enabled": true,
-    "delay": 500
-  },
   "go.inlayHints.parameterNames": true,
   "go.languageServerExperimentalFeatures": {
     "diagnostics": true
   },
   "go.useLanguageServer": true,
-  "go.autocompleteUnimportedPackages": true,
-  "go.gotoSymbol.includeImports": true,
   "go.inferGopath": true,
-  "go.gotoSymbol.includeGoroot": true,
   "go.vetOnSave": "workspace",
   "go.coverMode": "default",
   "go.addTags": {

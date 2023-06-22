@@ -23,8 +23,7 @@ type (
 	}
 
 	retryHandler[T Message] struct {
-		serializer serializer.Serializer[T]
-		handler    Handler[T]
+		handler    handler[T]
 		retryCount uint32
 	}
 
@@ -45,11 +44,6 @@ func (h RawHandlerFunc) Handle(ctx context.Context, body *amqp091.Delivery) erro
 }
 
 func (h handler[T]) Handle(ctx context.Context, delivery *amqp091.Delivery) error {
-	if delivery.ContentType != h.serializer.GetContentType() {
-		_ = delivery.Reject(false)
-		return errors.New("invalid content type")
-	}
-
 	body, err := h.serializer.Unmarshal(delivery.Body)
 	if err != nil {
 		_ = delivery.Reject(false)
@@ -77,18 +71,13 @@ func (h handler[T]) Handle(ctx context.Context, delivery *amqp091.Delivery) erro
 }
 
 func (h retryHandler[T]) Handle(ctx context.Context, delivery *amqp091.Delivery) error {
-	if delivery.ContentType != h.serializer.GetContentType() {
-		_ = delivery.Reject(false)
-		return errors.New("invalid content type")
-	}
-
-	body, err := h.serializer.Unmarshal(delivery.Body)
+	body, err := h.handler.serializer.Unmarshal(delivery.Body)
 	if err != nil {
 		_ = delivery.Reject(false)
 		return err
 	}
 
-	if err := h.handler.Handle(ctx, body); err != nil {
+	if err := h.handler.handler.Handle(ctx, body); err != nil {
 		_, ok := delivery.Headers[retryHeader]
 
 		if !ok {

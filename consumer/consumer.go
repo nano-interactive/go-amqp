@@ -78,49 +78,73 @@ func NewRawFunc[T Message](h RawHandlerFunc, options ...Option[T]) (Consumer[T],
 }
 
 func NewFunc[T Message](h HandlerFunc[T], options ...Option[T]) (Consumer[T], error) {
-	var privHandler RawHandler
-
 	cfg := Config[T]{}
 
 	for _, o := range options {
 		o(&cfg)
+	}
+
+	var (
+		rawHandler RawHandler
+		s serializer.Serializer[T]
+	)
+
+	if cfg.serializer == nil {
+		s = serializer.JsonSerializer[T]{}
+	} else {
+		s = cfg.serializer
+	}
+
+	privHandler := handler[T]{
+		handler:    h,
+		serializer: s,
 	}
 
 	if cfg.retryCount > 1 {
-		privHandler = retryHandler[T]{
-			handler:    h,
+		rawHandler = retryHandler[T]{
+			handler:    privHandler,
 			retryCount: uint32(cfg.retryCount),
 		}
 	} else {
-		privHandler = handler[T]{
-			handler: h,
-		}
+		rawHandler = privHandler
 	}
 
-	return NewRaw[T](privHandler, options...)
+	return NewRaw[T](rawHandler, options...)
 }
 
 func New[T Message](h Handler[T], options ...Option[T]) (Consumer[T], error) {
-	var privHandler RawHandler
-
 	cfg := Config[T]{}
 
 	for _, o := range options {
 		o(&cfg)
 	}
 
-	if cfg.retryCount > 0 {
-		privHandler = retryHandler[T]{
-			handler:    h,
+	var (
+		rawHandler RawHandler
+		s serializer.Serializer[T]
+	)
+
+	if cfg.serializer == nil {
+		s = serializer.JsonSerializer[T]{}
+	} else {
+		s = cfg.serializer
+	}
+
+	privHandler := handler[T]{
+		handler:    h,
+		serializer: s,
+	}
+
+	if cfg.retryCount > 1 {
+		rawHandler = retryHandler[T]{
+			handler:    privHandler,
 			retryCount: uint32(cfg.retryCount),
 		}
 	} else {
-		privHandler = handler[T]{
-			handler: h,
-		}
+		rawHandler = privHandler
 	}
 
-	return NewRaw[T](privHandler, options...)
+	return NewRaw[T](rawHandler, options...)
 }
 
 func (c Consumer[T]) Close() error {
