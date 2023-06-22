@@ -11,7 +11,6 @@ import (
 
 type (
 	QueueConfig struct {
-		QueueName     string
 		Workers       int
 		PrefetchCount int
 	}
@@ -22,7 +21,7 @@ type (
 	}
 )
 
-func newQueue[T any](base context.Context, cfg Config[T], handler RawHandler) (*queue, error) {
+func newQueue[T any](base context.Context, cfg Config[T], queueDeclare QueueDeclare, handler RawHandler) (*queue, error) {
 	conn, err := connection.New(base, cfg.connectionOptions, connection.Events{
 		OnConnectionReady: func(ctx context.Context, connection *amqp091.Connection) error {
 			watchDog := make(chan int, cfg.queueConfig.Workers)
@@ -30,7 +29,13 @@ func newQueue[T any](base context.Context, cfg Config[T], handler RawHandler) (*
 				watchDog <- i + 1
 			}
 
-			go watchdog(ctx, connection, watchDog, cfg.onError, cfg, handler)
+			watcher, err := watchdog(ctx, connection, watchDog, cfg.onError, cfg, queueDeclare, handler)
+
+			if err != nil {
+				return err
+			}
+
+			go watcher()
 
 			return nil
 		},

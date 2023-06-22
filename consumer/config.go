@@ -10,16 +10,30 @@ import (
 	"github.com/nano-interactive/go-amqp/serializer"
 )
 
+type ExchangeBinding struct {
+	ExchangeName string
+	RoutingKey   string
+}
+
+type QueueDeclare struct {
+	QueueName        string
+	ExchangeBindings []ExchangeBinding
+	Durable          bool
+	AutoDelete       bool
+	Exclusive        bool
+	NoWait           bool
+}
+
 type Config[T any] struct {
 	ctx               context.Context
 	logger            amqp.Logger
+	serializer        serializer.Serializer[T]
 	onError           connection.OnErrorFunc
-	serializer 	  serializer.Serializer[T]
 	onMessageError    func(context.Context, *amqp091.Delivery, error)
 	onListenerStart   func(context.Context, int)
 	onListenerExit    func(context.Context, int)
-	queueConfig       QueueConfig
 	connectionOptions connection.Config
+	queueConfig       QueueConfig
 	retryCount        uint32
 }
 

@@ -44,6 +44,11 @@ func main() {
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 
 	c, err := consumer.NewFunc(handler,
+		consumer.QueueDeclare{
+			ExchangeBindings: []consumer.ExchangeBinding{{ExchangeName: "testing_publisher"}},
+			QueueName: "testing_queue",
+			Durable: true,
+		},
 		consumer.WithOnMessageError[Message](func(ctx context.Context, d *amqp091.Delivery, err error) {
 			fmt.Fprintf(os.Stderr, "[ERROR] Message error: %s\n", err)
 		}),
@@ -63,7 +68,6 @@ func main() {
 		consumer.WithQueueConfig[Message](consumer.QueueConfig{
 			Workers:       1,
 			PrefetchCount: 128,
-			QueueName:     "testing_queue",
 		}),
 	)
 	if err != nil {

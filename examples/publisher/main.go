@@ -43,7 +43,6 @@ func main() {
 		publisher.WithContext[Message](ctx),
 		publisher.WithConnectionOptions[Message](connConfig),
 		publisher.WithLogger[Message](&logger{}),
-		// publisher.WithBufferedMessages[Message](1000),
 		publisher.WithExchangeName[Message]("testing_publisher"),
 	)
 	if err != nil {

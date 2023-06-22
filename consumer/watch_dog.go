@@ -16,63 +16,91 @@ func watchdog[T any](
 	workerExit chan int,
 	onError connection.OnErrorFunc,
 	cfg Config[T],
+	queueDeclare QueueDeclare,
 	handler RawHandler,
-) {
+) (func(), error) {
 	var wg sync.WaitGroup
-	defer close(workerExit)
 
-	ctx, cancel := context.WithCancel(ctx)
+	channel, err := conn.Channel()
+	if err != nil {
+		return nil, err
+	}
 
-	for {
-		select {
-		case <-ctx.Done():
-			cancel()
-			wg.Wait()
-			return
-		case id := <-workerExit:
-			channel, err := conn.Channel()
-			if err != nil {
-				onError(fmt.Errorf("failed to create channel, trying again: %v", err))
-				workerExit <- id
-				continue
-			}
+	_, err = channel.QueueDeclare(
+		queueDeclare.QueueName,
+		queueDeclare.Durable,
+		queueDeclare.AutoDelete,
+		queueDeclare.Exclusive,
+		queueDeclare.NoWait,
+		nil,
+	)
 
-			if err = channel.Qos(cfg.queueConfig.PrefetchCount, 0, false); err != nil {
-				onError(fmt.Errorf("failed to set prefetch count, trying again: %v", err))
+	if err != nil {
+		return nil, err
+	}
 
-				if !channel.IsClosed() {
-					_ = channel.Close()
-				}
-				workerExit <- id
-				continue
-			}
-
-			if !channel.IsClosed() {
-				if err = channel.Close(); err != nil {
-					onError(fmt.Errorf("failed to close channel, trying again: %v", err))
-					workerExit <- id
-					continue
-				}
-			}
-
-			wg.Add(1)
-
-			l := newListener(id, &wg, cfg.queueConfig, conn, handler, workerExit, cfg.onMessageError)
-
-			go func() {
-				if cfg.onListenerStart != nil {
-					cfg.onListenerStart(ctx, id)
-				}
-
-				if cfg.onListenerExit != nil {
-					defer cfg.onListenerExit(ctx, id)
-				}
-
-				defer l.Close()
-				if err := l.Listen(ctx, cfg.logger); err != nil {
-					onError(fmt.Errorf("failed to start listener: %v", err))
-				}
-			}()
+	for _, binding := range queueDeclare.ExchangeBindings {
+		if err = channel.QueueBind(
+			queueDeclare.QueueName,
+			binding.RoutingKey,
+			binding.ExchangeName,
+			false,
+			nil,
+		); err != nil {
+			return nil, err
 		}
 	}
+
+	if !channel.IsClosed() {
+		if err = channel.Close(); err != nil {
+			return nil, err
+		}
+	} else {
+		return nil, fmt.Errorf("failed to declare queue: %v", err)
+	}
+
+	return func() {
+		newCtx, cancel := context.WithCancel(ctx)
+		defer close(workerExit)
+		defer cancel()
+
+		for {
+			select {
+			case <-ctx.Done():
+				wg.Wait()
+				return
+			case id := <-workerExit:
+				wg.Add(1)
+
+				l := newListener(
+					id,
+					queueDeclare.QueueName,
+					cfg.queueConfig,
+					conn,
+					handler,
+					cfg.onMessageError,
+				)
+
+				go func() {
+					defer wg.Done()
+					if cfg.onListenerStart != nil {
+						cfg.onListenerStart(newCtx, id)
+					}
+
+					if cfg.onListenerExit != nil {
+						defer cfg.onListenerExit(newCtx, id)
+					}
+
+					shouldRestart, err := l.Listen(newCtx, cfg.logger)
+					if err != nil {
+						onError(fmt.Errorf("failed to start listener: %v", err))
+					}
+
+					if shouldRestart {
+						workerExit <- id
+					}
+				}()
+			}
+		}
+	}, nil
 }

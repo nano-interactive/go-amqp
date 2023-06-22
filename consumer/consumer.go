@@ -25,7 +25,7 @@ type (
 	}
 )
 
-func NewRaw[T Message](handler RawHandler, options ...Option[T]) (Consumer[T], error) {
+func NewRaw[T Message](handler RawHandler, queueDeclare QueueDeclare, options ...Option[T]) (Consumer[T], error) {
 	var msg T
 
 	if reflect.ValueOf(msg).Kind() == reflect.Ptr {
@@ -36,7 +36,6 @@ func NewRaw[T Message](handler RawHandler, options ...Option[T]) (Consumer[T], e
 		queueConfig: QueueConfig{
 			PrefetchCount: 128,
 			Workers:       1,
-			QueueName:     "",
 		},
 		retryCount: 1,
 		serializer: serializer.JsonSerializer[T]{},
@@ -59,11 +58,11 @@ func NewRaw[T Message](handler RawHandler, options ...Option[T]) (Consumer[T], e
 		o(&cfg)
 	}
 
-	if cfg.queueConfig.QueueName == "" {
+	if queueDeclare.QueueName == "" {
 		return Consumer[T]{}, errors.New("queue name is required... Please call WithQueueName(queueName) option function")
 	}
 
-	queue, err := newQueue(cfg.ctx, cfg, handler)
+	queue, err := newQueue(cfg.ctx, cfg, queueDeclare, handler)
 	if err != nil {
 		return Consumer[T]{}, err
 	}
@@ -73,11 +72,11 @@ func NewRaw[T Message](handler RawHandler, options ...Option[T]) (Consumer[T], e
 	}, nil
 }
 
-func NewRawFunc[T Message](h RawHandlerFunc, options ...Option[T]) (Consumer[T], error) {
-	return NewRaw[T](h, options...)
+func NewRawFunc[T Message](h RawHandlerFunc, queueDeclare QueueDeclare, options ...Option[T]) (Consumer[T], error) {
+	return NewRaw[T](h, queueDeclare, options...)
 }
 
-func NewFunc[T Message](h HandlerFunc[T], options ...Option[T]) (Consumer[T], error) {
+func NewFunc[T Message](h HandlerFunc[T], queueDeclare QueueDeclare, options ...Option[T]) (Consumer[T], error) {
 	cfg := Config[T]{}
 
 	for _, o := range options {
@@ -109,10 +108,10 @@ func NewFunc[T Message](h HandlerFunc[T], options ...Option[T]) (Consumer[T], er
 		rawHandler = privHandler
 	}
 
-	return NewRaw[T](rawHandler, options...)
+	return NewRaw[T](rawHandler, queueDeclare, options...)
 }
 
-func New[T Message](h Handler[T], options ...Option[T]) (Consumer[T], error) {
+func New[T Message](h Handler[T],queueDeclare QueueDeclare, options ...Option[T]) (Consumer[T], error) {
 	cfg := Config[T]{}
 
 	for _, o := range options {
@@ -144,7 +143,7 @@ func New[T Message](h Handler[T], options ...Option[T]) (Consumer[T], error) {
 		rawHandler = privHandler
 	}
 
-	return NewRaw[T](rawHandler, options...)
+	return NewRaw[T](rawHandler, queueDeclare, options...)
 }
 
 func (c Consumer[T]) Close() error {

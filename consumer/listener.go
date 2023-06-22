@@ -2,30 +2,27 @@ package consumer
 
 import (
 	"context"
-	"sync"
+
+	"github.com/rabbitmq/amqp091-go"
 
 	"github.com/nano-interactive/go-amqp"
-	"github.com/rabbitmq/amqp091-go"
 )
 
 type listener struct {
 	handler        RawHandler
-	wg             *sync.WaitGroup
 	conn           *amqp091.Connection
-	workerExit     chan<- int
 	onMessageError func(context.Context, *amqp091.Delivery, error)
+	queueName      string
 	cfg            QueueConfig
 	id             int
-	shouldRestart  bool
 }
 
 func newListener(
 	id int,
-	wg *sync.WaitGroup,
+	queueName string,
 	cfg QueueConfig,
 	conn *amqp091.Connection,
 	handler RawHandler,
-	workerExit chan<- int,
 	onMessageError func(context.Context, *amqp091.Delivery, error),
 ) *listener {
 	if onMessageError == nil {
@@ -34,42 +31,36 @@ func newListener(
 
 	return &listener{
 		id:             id,
-		wg:             wg,
-		cfg:            cfg,
 		conn:           conn,
+		queueName:      queueName,
+		cfg:            cfg,
 		handler:        handler,
-		workerExit:     workerExit,
-		shouldRestart:  false,
 		onMessageError: onMessageError,
 	}
 }
 
-func (l *listener) Close() error {
-	if l.shouldRestart {
-		l.workerExit <- l.id
-	}
-	return nil
-}
-
-func (l *listener) Listen(ctx context.Context, logger amqp.Logger) error {
-	defer l.wg.Done()
-
+func (l *listener) Listen(ctx context.Context, logger amqp.Logger) (shouldRestart bool, err error) {
 	channel, err := l.conn.Channel()
 	if err != nil {
-		l.shouldRestart = true
-		return err
+		return true, err
 	}
 
 	if err = channel.Qos(l.cfg.PrefetchCount, 0, false); err != nil {
-		l.shouldRestart = true
-		return err
+		return true, err
 	}
 
-	dataStream, err := channel.Consume(l.cfg.QueueName, "", false, false, false, false, nil)
+	dataStream, err := channel.Consume(
+		l.queueName,
+		"",
+		false,
+		false,
+		false,
+		false,
+		nil,
+	)
 	if err != nil {
-		logger.Error("Failed to consume queue(%s): %v", l.cfg.QueueName, err)
-		l.shouldRestart = true
-		return err
+		logger.Error("Failed to consume queue(%s): %v", l.queueName, err)
+		return true, err
 	}
 
 	defer func(channel *amqp091.Channel) {
@@ -82,8 +73,7 @@ func (l *listener) Listen(ctx context.Context, logger amqp.Logger) error {
 		select {
 		case delivery, more := <-dataStream:
 			if !more {
-				l.shouldRestart = true
-				return nil
+				return true, nil
 			}
 
 			if err := l.handler.Handle(ctx, &delivery); err != nil {
@@ -91,9 +81,7 @@ func (l *listener) Listen(ctx context.Context, logger amqp.Logger) error {
 				continue
 			}
 		case <-ctx.Done():
-			l.shouldRestart = false
-
-			return nil
+			return false, nil
 		}
 	}
 }
