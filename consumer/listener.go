@@ -25,10 +25,6 @@ func newListener(
 	handler RawHandler,
 	onMessageError func(context.Context, *amqp091.Delivery, error),
 ) *listener {
-	if onMessageError == nil {
-		panic("onMessageError is required")
-	}
-
 	return &listener{
 		id:             id,
 		conn:           conn,

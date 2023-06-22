@@ -62,6 +62,10 @@ func NewRaw[T Message](handler RawHandler, queueDeclare QueueDeclare, options ..
 		return Consumer[T]{}, errors.New("queue name is required... Please call WithQueueName(queueName) option function")
 	}
 
+	if cfg.onMessageError == nil {
+		panic("onMessageError is required")
+	}
+
 	queue, err := newQueue(cfg.ctx, cfg, queueDeclare, handler)
 	if err != nil {
 		return Consumer[T]{}, err
@@ -85,7 +89,7 @@ func NewFunc[T Message](h HandlerFunc[T], queueDeclare QueueDeclare, options ...
 
 	var (
 		rawHandler RawHandler
-		s serializer.Serializer[T]
+		s          serializer.Serializer[T]
 	)
 
 	if cfg.serializer == nil {
@@ -111,7 +115,7 @@ func NewFunc[T Message](h HandlerFunc[T], queueDeclare QueueDeclare, options ...
 	return NewRaw[T](rawHandler, queueDeclare, options...)
 }
 
-func New[T Message](h Handler[T],queueDeclare QueueDeclare, options ...Option[T]) (Consumer[T], error) {
+func New[T Message](h Handler[T], queueDeclare QueueDeclare, options ...Option[T]) (Consumer[T], error) {
 	cfg := Config[T]{}
 
 	for _, o := range options {
@@ -120,7 +124,7 @@ func New[T Message](h Handler[T],queueDeclare QueueDeclare, options ...Option[T]
 
 	var (
 		rawHandler RawHandler
-		s serializer.Serializer[T]
+		s          serializer.Serializer[T]
 	)
 
 	if cfg.serializer == nil {
