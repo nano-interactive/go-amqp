@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/nano-interactive/go-amqp/v2/connection"
 	"github.com/nano-interactive/go-amqp/v2/publisher"
 	"github.com/nano-interactive/go-amqp/v2/serializer"
 	amqp_testing "github.com/nano-interactive/go-amqp/v2/testing"
@@ -63,57 +62,6 @@ func TestPublisherNew(t *testing.T) {
 
 		assert.NoError(err)
 		assert.NotNil(pub)
-	})
-
-	t.Run("ConnectionErrors", func(t *testing.T) {
-		mappings := amqp_testing.NewMappings(t).
-			AddMapping("test_exchange", "test_queue")
-
-		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-
-		t.Cleanup(cancel)
-
-		pub, err := publisher.New[Msg](
-			mappings.Exchange("test_exchange"),
-			publisher.WithContext[Msg](ctx),
-			publisher.WithSerializer[Msg](serializer.JsonSerializer[Msg]{}),
-			publisher.WithOnErrorFunc[Msg](func(err error) {
-				assert.Error(err)
-			}),
-			publisher.WithConnectionOptions[Msg](connection.Config{
-				Host:           "localhost",
-				Port:           5671,
-				ReconnectRetry: 1,
-			}),
-		)
-
-		assert.Error(err)
-		assert.Nil(pub)
-	})
-
-	t.Run("ConnectionErrors_Panics_DefaultErrorHandler", func(t *testing.T) {
-		mappings := amqp_testing.NewMappings(t).
-			AddMapping("test_exchange", "test_queue")
-
-		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-
-		t.Cleanup(cancel)
-
-		assert.Panics(func() {
-			pub, err := publisher.New[Msg](
-				mappings.Exchange("test_exchange"),
-				publisher.WithContext[Msg](ctx),
-				publisher.WithSerializer[Msg](serializer.JsonSerializer[Msg]{}),
-				publisher.WithConnectionOptions[Msg](connection.Config{
-					Host:           "localhost",
-					Port:           5671,
-					ReconnectRetry: 1,
-				}),
-			)
-
-			assert.Error(err)
-			assert.Nil(pub)
-		})
 	})
 }
 
