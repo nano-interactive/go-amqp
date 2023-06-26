@@ -16,7 +16,7 @@
 
 * Added `testing.AssertAMQPMessageCount`
 * Added `testing.PublishConfig` to declare AMQP Exchange params
-
+* Added missing `ExchangeTypeHeader` to publisher
 ## Bugfixes
 
 # v1.1.0

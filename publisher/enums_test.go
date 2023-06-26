@@ -13,6 +13,7 @@ func TestExchangeTypeStrin(t *testing.T) {
 	assert.Equal(ExchangeTypeDirect.String(), "direct")
 	assert.Equal(ExchangeTypeFanout.String(), "fanout")
 	assert.Equal(ExchangeTypeTopic.String(), "topic")
+	assert.Equal(ExchangeTypeHeader.String(), "headers")
 	assert.Panics(func() {
 		_ = ExchangeType(4).String()
 	})
