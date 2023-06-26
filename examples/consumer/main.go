@@ -46,8 +46,8 @@ func main() {
 	c, err := consumer.NewFunc(handler,
 		consumer.QueueDeclare{
 			ExchangeBindings: []consumer.ExchangeBinding{{ExchangeName: "testing_publisher"}},
-			QueueName: "testing_queue",
-			Durable: true,
+			QueueName:        "testing_queue",
+			Durable:          true,
 		},
 		consumer.WithOnMessageError[Message](func(ctx context.Context, d *amqp091.Delivery, err error) {
 			fmt.Fprintf(os.Stderr, "[ERROR] Message error: %s\n", err)

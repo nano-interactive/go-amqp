@@ -30,7 +30,6 @@ func newQueue[T any](base context.Context, cfg Config[T], queueDeclare QueueDecl
 			}
 
 			watcher, err := watchdog(ctx, connection, watchDog, cfg.onError, cfg, queueDeclare, handler)
-
 			if err != nil {
 				return err
 			}

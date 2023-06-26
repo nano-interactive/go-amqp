@@ -1,15 +1,17 @@
-package testing_utils
+package testing
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/nano-interactive/go-amqp/connection"
-	"github.com/rabbitmq/amqp091-go"
 	"testing"
 	"time"
+
+	"github.com/rabbitmq/amqp091-go"
+
+	"github.com/nano-interactive/go-amqp/connection"
+	"github.com/nano-interactive/go-amqp/consumer"
+	"github.com/nano-interactive/go-amqp/publisher"
 )
 
 func GetAMQPConnection(t testing.TB, cfg connection.Config) (*amqp091.Connection, *amqp091.Channel) {
@@ -58,35 +60,84 @@ func GetAMQPConnection(t testing.TB, cfg connection.Config) (*amqp091.Connection
 	return conn, ch
 }
 
-func SetupAmqp(t testing.TB, cfg connection.Config, queueToExchangeBindings map[*string]*string) *amqp091.Channel {
-	_, channel := GetAMQPConnection(t, cfg)
-	t.Cleanup(func() {
-		_ = channel.Close()
-	})
+type PublisherConfig struct {
+	Name   string
+	Config publisher.ExchangeDeclare
+}
 
-	for queueName, exchangeName := range queueToExchangeBindings {
-		*queueName = fmt.Sprintf("%s-%s", *queueName, randomString(16))
-		*exchangeName = fmt.Sprintf("%s-%s", *exchangeName, randomString(16))
+type ConsumerConfig struct {
+	Name   string
+	Config consumer.QueueDeclare
+}
+
+func SetupAmqp(t testing.TB, cfg connection.Config, queueToExchangeBindings map[*ConsumerConfig]*PublisherConfig) *amqp091.Channel {
+	t.Helper()
+	_, channel := GetAMQPConnection(t, cfg)
+
+	for queue, exchange := range queueToExchangeBindings {
+		if exchange == nil {
+			panic("exchange config is nil")
+		}
+
+		if queue == nil {
+			panic("queue config is nil")
+		}
+
+		queue.Name = fmt.Sprintf("%s-%s", queue.Name, t.Name())
+		exchange.Name = fmt.Sprintf("%s-%s", exchange.Name, t.Name())
+
+		kind := amqp091.ExchangeFanout
+
+		if exchange.Config.Type.String() != "" {
+			kind = exchange.Config.Type.String()
+		}
+
+		durable := true
+		if !exchange.Config.Durable {
+			durable = false
+		}
+
+		autoDelete := true
+
+		if !exchange.Config.AutoDelete {
+			autoDelete = false
+		}
+
+		args := make(amqp091.Table)
+
+		if exchange.Config.Args != nil {
+			args = exchange.Config.Args
+		}
 
 		err := channel.ExchangeDeclare(
-			*exchangeName,
-			amqp091.ExchangeFanout,
-			true,
-			false,
-			false,
-			false,
-			nil,
+			exchange.Name,
+			kind,
+			durable,
+			autoDelete,
+			exchange.Config.Internal,
+			exchange.Config.NoWait,
+			args,
 		)
 		if err != nil {
 			t.Fatal(err)
 		}
 
+		durable = true
+		if !queue.Config.Durable {
+			durable = false
+		}
+
+		autoDelete = true
+		if !queue.Config.AutoDelete {
+			autoDelete = false
+		}
+
 		_, err = channel.QueueDeclare(
-			*queueName,
-			true,
-			false,
-			false,
-			false,
+			queue.Name,
+			durable,
+			autoDelete,
+			queue.Config.Exclusive,
+			queue.Config.NoWait,
 			nil,
 		)
 		if err != nil {
@@ -94,21 +145,22 @@ func SetupAmqp(t testing.TB, cfg connection.Config, queueToExchangeBindings map[
 		}
 
 		_ = channel.QueueBind(
-			*queueName,
+			queue.Name,
 			"",
-			*exchangeName,
+			exchange.Name,
 			false,
 			nil,
 		)
 
 		t.Cleanup(func() {
-			_, _ = channel.QueueDelete(*queueName, false, false, false)
-			_ = channel.ExchangeDelete(*exchangeName, false, false)
+			_, _ = channel.QueueDelete(queue.Name, false, false, false)
+			_ = channel.ExchangeDelete(exchange.Name, false, false)
 		})
 	}
 
 	return channel
 }
+
 
 func ConsumeAMQPMessages[T any](
 	t testing.TB,
@@ -116,6 +168,7 @@ func ConsumeAMQPMessages[T any](
 	channel *amqp091.Channel,
 	queueName string,
 ) []T {
+	t.Helper()
 	messages := make([]T, 0, 10)
 
 	ch, err := channel.Consume(
@@ -162,6 +215,7 @@ func PublishAMQPMessage[T any](
 	exchange string,
 	msg T,
 ) {
+	t.Helper()
 	message, err := json.Marshal(msg)
 	if err != nil {
 		t.Fatal(err)
@@ -184,15 +238,4 @@ func PublishAMQPMessage[T any](
 	if err != nil {
 		t.Fatal(err)
 	}
-}
-
-func randomString(n int32) string {
-	buffer := make([]byte, n)
-
-	_, err := rand.Read(buffer)
-	if err != nil {
-		return ""
-	}
-
-	return base64.RawURLEncoding.EncodeToString(buffer)
 }

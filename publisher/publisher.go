@@ -34,17 +34,34 @@ type (
 		wg           sync.WaitGroup
 		ready        sync.RWMutex
 	}
+
+	ExchangeDeclare struct {
+		Args       amqp091.Table
+		name       string
+		RoutingKey string
+		Type       ExchangeType
+		Durable    bool
+		AutoDelete bool
+		Internal   bool
+		NoWait     bool
+	}
 )
 
-func (publisher *Publisher[T]) onConnectionReady(cfg Config[T]) connection.OnConnectionReady {
-	exchangeName := cfg.exchangeName
-	exchangeType := cfg.exchangeType.String()
+func (e ExchangeDeclare) declare(ch *amqp091.Channel, logger amqp.Logger) error {
+	err := ch.ExchangeDeclare(e.name, e.Type.String(), e.Durable, e.AutoDelete, e.Internal, e.NoWait, e.Args)
+	if err != nil {
+		logger.Error("Failed to declare exchange: %s(%s) %v", e.name, e.Type, err)
+		return err
+	}
 
+	return nil
+}
+
+func (publisher *Publisher[T]) onConnectionReady(cfg Config[T]) connection.OnConnectionReady {
 	return func(ctx context.Context, connection *amqp091.Connection) error {
 		chOrigin, notifyClose, err := newChannel(
 			connection,
-			exchangeName,
-			exchangeType,
+			cfg.exchange,
 			cfg.logger,
 		)
 		if err != nil {
@@ -75,8 +92,7 @@ func (publisher *Publisher[T]) onConnectionReady(cfg Config[T]) connection.OnCon
 
 					chOrigin, notifyClose, err = newChannel(
 						connection,
-						exchangeName,
-						exchangeType,
+						cfg.exchange,
 						cfg.logger,
 					)
 
@@ -114,7 +130,7 @@ func (publisher *Publisher[T]) onConnectionReady(cfg Config[T]) connection.OnCon
 
 func newChannel(
 	connection *amqp091.Connection,
-	exchangeName, exchangeType string,
+	exchange ExchangeDeclare,
 	logger amqp.Logger,
 ) (*amqp091.Channel, chan *amqp091.Error, error) {
 	ch, err := connection.Channel()
@@ -123,18 +139,7 @@ func newChannel(
 		return nil, nil, err
 	}
 
-	err = ch.ExchangeDeclare(
-		exchangeName,
-		exchangeType,
-		true,
-		false,
-		false,
-		false,
-		nil,
-	)
-
-	if err != nil {
-		logger.Error("Failed to declare exchange: %s(%s) %v", exchangeName, exchangeType, err)
+	if err := exchange.declare(ch, logger); err != nil {
 		return nil, nil, err
 	}
 
@@ -143,16 +148,27 @@ func newChannel(
 	return ch, notifyClose, nil
 }
 
-func New[T any](options ...Option[T]) (*Publisher[T], error) {
+func New[T any](exchangeName string, options ...Option[T]) (*Publisher[T], error) {
+	if exchangeName == "" {
+		return nil, errors.New("exchange name is required")
+	}
+
 	cfg := Config[T]{
 		serializer:        serializer.JsonSerializer[T]{},
 		logger:            amqp.EmptyLogger{},
 		messageBuffering:  1,
 		connectionOptions: connection.DefaultConfig,
 		ctx:               context.Background(),
-		exchangeType:      ExchangeTypeFanout,
-		exchangeName:      "",
-		routingKey:        "",
+		exchange: 		ExchangeDeclare{
+			name:       exchangeName,
+			RoutingKey: "",
+			Type:       ExchangeTypeFanout,
+			Durable:    true,
+			AutoDelete: false,
+			Internal:   false,
+			NoWait:     false,
+			Args: 	 nil,
+		},
 		onError: func(err error) {
 			if errors.Is(err, connection.ErrRetriesExhausted) {
 				panic(err)
@@ -166,17 +182,13 @@ func New[T any](options ...Option[T]) (*Publisher[T], error) {
 		option(&cfg)
 	}
 
-	if cfg.exchangeName == "" {
-		return nil, errors.New("exchange name is required")
-	}
-
 	ctx, cancel := context.WithCancel(cfg.ctx)
 
 	publisher := &Publisher[T]{
 		serializer:   cfg.serializer,
 		cancel:       cancel,
-		exchangeName: cfg.exchangeName,
-		routingKey:   cfg.routingKey,
+		exchangeName: exchangeName,
+		routingKey:   cfg.exchange.RoutingKey,
 	}
 
 	conn, err := connection.New(ctx, cfg.connectionOptions, connection.Events{

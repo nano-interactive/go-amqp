@@ -14,10 +14,8 @@ type (
 		serializer        serializer.Serializer[T]
 		logger            amqp.Logger
 		onError           connection.OnErrorFunc
-		exchangeName      string
-		routingKey        string
+		exchange          ExchangeDeclare
 		connectionOptions connection.Config
-		exchangeType      ExchangeType
 		messageBuffering  int
 	}
 
@@ -26,21 +24,9 @@ type (
 	Option[T any] func(*Config[T])
 )
 
-func WithExchangeType[T any](name ExchangeType) Option[T] {
+func WithExchangeDeclare[T any](exchange ExchangeDeclare) Option[T] {
 	return func(c *Config[T]) {
-		c.exchangeType = name
-	}
-}
-
-func WithExchangeRoutingKey[T any](key string) Option[T] {
-	return func(c *Config[T]) {
-		c.routingKey = key
-	}
-}
-
-func WithExchangeName[T any](name string) Option[T] {
-	return func(c *Config[T]) {
-		c.exchangeName = name
+		c.exchange = exchange
 	}
 }
 
