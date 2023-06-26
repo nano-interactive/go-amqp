@@ -14,6 +14,15 @@ Working with async protocol in a language that does not support async code is a 
 Goals with our AMQP wrapper are, to provide the most efficient way possible to consume and publish messages, with very simple API thats really hard to screw up. By providing 1 simple interface for `publishing` messages from any `AMQP` message broker, and only function to start `consumers`. `Consumer[T]` has a size of one pointer (8 bytes), and its used just to pass `T Message` and provide type safety to the underlying handler and to `Close` the workers running on multiple threads.
 This makes those two very easy to `Mock` for unit testing, as `Pub[T]` is an interface with only one method, and `Consumer[T]` doesn't need to be tested, as it by it's self does nothing, only thing to test for `consumer` is it's handler that users of this library create themselfs.
 
+## Install
+
+To install the library just use `go get`
+
+```sh
+go get github.com/nano-interactive/go-amqp/v2
+
+```
+
 ```go
 
 // Publisher
