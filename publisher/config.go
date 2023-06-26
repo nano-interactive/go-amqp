@@ -3,16 +3,16 @@ package publisher
 import (
 	"context"
 
-	"github.com/nano-interactive/go-amqp"
-	"github.com/nano-interactive/go-amqp/connection"
-	"github.com/nano-interactive/go-amqp/serializer"
+	"github.com/nano-interactive/go-amqp/v2/connection"
+	"github.com/nano-interactive/go-amqp/v2/logging"
+	"github.com/nano-interactive/go-amqp/v2/serializer"
 )
 
 type (
 	Config[T any] struct {
 		ctx               context.Context
 		serializer        serializer.Serializer[T]
-		logger            amqp.Logger
+		logger            logging.Logger
 		onError           connection.OnErrorFunc
 		exchange          ExchangeDeclare
 		connectionOptions connection.Config
@@ -50,6 +50,38 @@ func WithContext[T any](ctx context.Context) Option[T] {
 
 func WithConnectionOptions[T any](connectionOptions connection.Config) Option[T] {
 	return func(c *Config[T]) {
+		if connectionOptions.Channels == 0 {
+			connectionOptions.Channels = connection.DefaultConfig.Channels
+		}
+
+		if connectionOptions.Vhost == "" {
+			connectionOptions.Vhost = connection.DefaultConfig.Vhost
+		}
+
+		if connectionOptions.Host == "" {
+			connectionOptions.Host = connection.DefaultConfig.Host
+		}
+
+		if connectionOptions.Port == 0 {
+			connectionOptions.Port = connection.DefaultConfig.Port
+		}
+
+		if connectionOptions.User == "" {
+			connectionOptions.User = connection.DefaultConfig.User
+		}
+
+		if connectionOptions.Password == "" {
+			connectionOptions.Password = connection.DefaultConfig.Password
+		}
+
+		if connectionOptions.ReconnectInterval == 0 {
+			connectionOptions.ReconnectInterval = connection.DefaultConfig.ReconnectInterval
+		}
+
+		if connectionOptions.ReconnectRetry == 0 {
+			connectionOptions.ReconnectRetry = connection.DefaultConfig.ReconnectRetry
+		}
+
 		c.connectionOptions = connectionOptions
 	}
 }
@@ -60,7 +92,7 @@ func WithBufferedMessages[T any](capacity int) Option[T] {
 	}
 }
 
-func WithLogger[T any](logger amqp.Logger) Option[T] {
+func WithLogger[T any](logger logging.Logger) Option[T] {
 	return func(c *Config[T]) {
 		if logger != nil {
 			c.logger = logger

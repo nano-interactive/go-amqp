@@ -5,7 +5,7 @@ import (
 
 	"github.com/rabbitmq/amqp091-go"
 
-	"github.com/nano-interactive/go-amqp"
+	"github.com/nano-interactive/go-amqp/v2/logging"
 )
 
 type listener struct {
@@ -35,7 +35,7 @@ func newListener(
 	}
 }
 
-func (l *listener) Listen(ctx context.Context, logger amqp.Logger) (shouldRestart bool, err error) {
+func (l *listener) Listen(ctx context.Context, logger logging.Logger) (shouldRestart bool, err error) {
 	channel, err := l.conn.Channel()
 	if err != nil {
 		return true, err

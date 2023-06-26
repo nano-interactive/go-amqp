@@ -1,4 +1,4 @@
-package amqp
+package logging
 
 type Logger interface {
 	Info(string, ...any)

@@ -7,7 +7,7 @@ import (
 
 	"github.com/rabbitmq/amqp091-go"
 
-	"github.com/nano-interactive/go-amqp/connection"
+	"github.com/nano-interactive/go-amqp/v2/connection"
 )
 
 func watchdog[T any](

@@ -1,4 +1,4 @@
-module github.com/nano-interactive/go-amqp
+module github.com/nano-interactive/go-amqp/v2
 
 go 1.20
 

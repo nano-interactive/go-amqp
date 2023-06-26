@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 
-	"github.com/nano-interactive/go-amqp/serializer"
 	"github.com/rabbitmq/amqp091-go"
+
+	"github.com/nano-interactive/go-amqp/v2/serializer"
 )
 
 var ErrNoRetry = errors.New("no retry")
