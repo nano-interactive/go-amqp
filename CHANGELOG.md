@@ -6,3 +6,7 @@
 * Testing package renamed from `testing_utils` to `testing`
 
 ## Features
+
+# v1.1.0
+
+* Retry Message Handler
