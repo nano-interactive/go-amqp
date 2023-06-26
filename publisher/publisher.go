@@ -157,7 +157,7 @@ func New[T any](exchangeName string, options ...Option[T]) (*Publisher[T], error
 		messageBuffering:  1,
 		connectionOptions: connection.DefaultConfig,
 		ctx:               context.Background(),
-		exchange: 		ExchangeDeclare{
+		exchange: ExchangeDeclare{
 			name:       exchangeName,
 			RoutingKey: "",
 			Type:       ExchangeTypeFanout,
@@ -165,7 +165,7 @@ func New[T any](exchangeName string, options ...Option[T]) (*Publisher[T], error
 			AutoDelete: false,
 			Internal:   false,
 			NoWait:     false,
-			Args: 	 nil,
+			Args:       nil,
 		},
 		onError: func(err error) {
 			if errors.Is(err, connection.ErrRetriesExhausted) {

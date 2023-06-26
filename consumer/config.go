@@ -123,7 +123,7 @@ func WithConnectionOptions[T any](connectionOptions connection.Config) Option[T]
 			connectionOptions.Password = connection.DefaultConfig.Password
 		}
 
-		if connectionOptions.ReconnectInterval== 0 {
+		if connectionOptions.ReconnectInterval == 0 {
 			connectionOptions.ReconnectInterval = connection.DefaultConfig.ReconnectInterval
 		}
 

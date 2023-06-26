@@ -78,7 +78,7 @@ func New(ctx context.Context, config Config, events Events) (*Connection, error)
 	}
 
 	for i := 0; i < config.ReconnectRetry; i++ {
-		if err= c.connect()(newCtx); err == nil {
+		if err = c.connect()(newCtx); err == nil {
 			return c, nil
 		}
 
