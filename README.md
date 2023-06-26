@@ -11,13 +11,24 @@ Working with async protocol in a language that does not support async code is a 
 
 ## Goals of the library
 
-Goals with our AMQP wrapper are, to provide the most efficient way possible to consume and publish messages, with very simple API thats really hard to screw up. By providing 2 simple interfaces for `publishing` and `consuming` messages from any `AMQP` message broker
+Goals with our AMQP wrapper are, to provide the most efficient way possible to consume and publish messages, with very simple API thats really hard to screw up. By providing 1 simple interface for `publishing` messages from any `AMQP` message broker, and only function to start `consumers`. `Consumer[T]` has a size of one pointer (8 bytes), and its used just to pass `T Message` and provide type safety to the underlying handler and to `Close` the workers running on multiple threads.
+This makes those two very easy to `Mock` for unit testing, as `Pub[T]` is an interface with only one method, and `Consumer[T]` doesn't need to be tested, as it by it's self does nothing, only thing to test for `consumer` is it's handler that users of this library create themselfs.
 
 ```go
+
+// Publisher
 type Pub[T any] interface {
-    io.Closer
     Publish(ctx context.Context, msg T) error
 }
+
+// Creator functions for Consumer
+func New[T Message](Handler[T], QueueDeclare, ...Option[T]) (Consumer[T], error)
+func NewFunc[T Message](HandlerFunc[T], QueueDeclare, ...Option[T]) (Consumer[T], error)
+
+// **SHOULD BE USED WITH CARE**
+func NewRawFunc[T Message](RawHandlerFunc, QueueDeclare, ...Option[T]) (Consumer[T], error)
+func NewRaw[T Message](RawHandler, QueueDeclare, ...Option[T]) (Consumer[T], error)
+
 ```
 
 we made it very easy to develop complex systems. By introducing generics we provide type-safety in consumers and publishers, when publisher is declared it can be used to publish only one type of message (provided as generic parameter), same applies to consumer -> by providing generic parameter, basic handler is type safe and messages with only type `T` will be accepted into the `Handler`.
@@ -44,11 +55,7 @@ c, err := consumer.NewFunc(
         Port:              5672,
         User:              "guest",
         Password:          "guest",
-        Vhost:             "/",
         ConnectionName:    "go-amqp-consumer",
-        ReconnectRetry:    10,
-        ReconnectInterval: 1 * time.Second,
-        Channels:          1000,
     }),
 )
 
