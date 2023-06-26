@@ -62,6 +62,7 @@ func New(ctx context.Context, config Config, events Events) (*Connection, error)
 	}
 
 	newCtx, cancel := context.WithCancel(ctx)
+
 	c := &Connection{
 		Config:                  &config,
 		cancel:                  cancel,
@@ -70,11 +71,21 @@ func New(ctx context.Context, config Config, events Events) (*Connection, error)
 		onError:                 events.OnError,
 	}
 
-	if err := c.connect()(newCtx); err != nil {
-		return nil, err
+	var err error
+
+	if err = c.connect()(newCtx); err == nil {
+		return c, nil
 	}
 
-	return c, nil
+	for i := 0; i < config.ReconnectRetry; i++ {
+		if err= c.connect()(newCtx); err == nil {
+			return c, nil
+		}
+
+		time.Sleep(config.ReconnectInterval)
+	}
+
+	return nil, err
 }
 
 func (c *Connection) handleReconnect(ctx context.Context, connection *amqp091.Connection, connect func(ctx context.Context) error) {

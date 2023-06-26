@@ -19,6 +19,8 @@
 * Added missing `ExchangeTypeHeader` to publisher
 ## Bugfixes
 
+* When connecting for the first time, `connection.Connection` respects `connection.Config.ReconnectRetry` and `connection.Config.ReconnectInterval`
+
 # v1.1.0
 
 * Retry Message Handler
