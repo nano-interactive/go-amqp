@@ -207,9 +207,9 @@ type PublishConfig struct {
 	NonBlocking bool
 }
 
-var defaultPublishConfig = PublishConfig{
-	NonBlocking: false,
-}
+// var defaultPublishConfig = PublishConfig{
+// 	NonBlocking: false,
+// }
 
 func (p *Publisher[T]) Publish(ctx context.Context, msg T, config ...PublishConfig) error {
 	if p.closing.Load() {
