@@ -100,7 +100,7 @@ func TestPublisherPublish(t *testing.T) {
 		assert.NoError(pub.Publish(context.Background(), Msg{Name: "test"}))
 		assert.NoError(pub.Close())
 
-		messages := amqp_testing.ConsumeAMQPMessages[Msg](t, mappings.Queue("test_queue"), 200*time.Millisecond)
+		messages := amqp_testing.ConsumeAMQPMessages[Msg](t, mappings.Queue("test_queue"), connection.DefaultConfig, 200*time.Millisecond)
 
 		assert.Len(messages, 1)
 		assert.Equal("test", messages[0].Name)
@@ -134,6 +134,7 @@ func TestPublisherPublish(t *testing.T) {
 		messages := amqp_testing.ConsumeAMQPMessages[string](
 			t,
 			mappings.Queue("test_queue"),
+			connection.DefaultConfig,
 			200*time.Millisecond,
 		)
 
@@ -167,6 +168,7 @@ func TestPublisherPublish(t *testing.T) {
 		messages := amqp_testing.ConsumeAMQPMessages[string](
 			t,
 			mappings.Queue("test_queue"),
+			connection.DefaultConfig,
 			200*time.Millisecond,
 		)
 

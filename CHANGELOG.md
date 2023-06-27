@@ -1,3 +1,8 @@
+# 2.0.3
+## Bufix
+
+* Fixing issue with testing publish
+
 # 2.0.2
 ## Bufix
 

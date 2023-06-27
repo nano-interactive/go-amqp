@@ -289,9 +289,10 @@ func AssertAMQPMessageCount[T any](
 	t testing.TB,
 	queueName string,
 	expectedCount int,
+	cfg connection.Config,
 	duration ...time.Duration,
 ) []T {
-	messages := ConsumeAMQPMessages[T](t, queueName, duration...)
+	messages := ConsumeAMQPMessages[T](t, queueName, cfg, duration...)
 
 	if len(messages) != expectedCount {
 		t.Fatalf("expected %d messages, got %d", expectedCount, len(messages))
@@ -303,10 +304,12 @@ func AssertAMQPMessageCount[T any](
 func ConsumeAMQPMessages[T any](
 	t testing.TB,
 	queueName string,
+	cfg connection.Config,
 	duration ...time.Duration,
 ) []T {
 	messages := make([]T, 0, 10)
-	_, channel := GetAMQPConnection(t, connection.DefaultConfig)
+
+	_, channel := GetAMQPConnection(t, cfg)
 
 	ch, err := channel.Consume(
 		queueName,
@@ -364,6 +367,7 @@ func PublishAMQPMessage(
 	t testing.TB,
 	exchange string,
 	msg any,
+		conn connection.Config,
 	config ...PublishConfig,
 ) {
 	cfg := PublishConfig{Duration: 0, RoutingKey: "", Marshal: json.Marshal, ContentType: "application/json"}
@@ -384,7 +388,7 @@ func PublishAMQPMessage(
 		t.Fatal(err)
 	}
 
-	_, channel := GetAMQPConnection(t, connection.DefaultConfig)
+	_, channel := GetAMQPConnection(t, conn)
 	ctx := context.Background()
 
 	if cfg.Duration > 0 {
