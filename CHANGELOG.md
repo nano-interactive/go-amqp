@@ -1,3 +1,14 @@
+# 2.0.2
+## Bufix
+
+* Fix deref in type check
+
+# 2.0.1
+
+## Bufix
+
+* `publisher.Pub[T]` interface matches the `publisher.Publisher[T]`
+
 # v2.0.0
 
 ## Breaking
