@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rabbitmq/amqp091-go"
@@ -31,6 +32,7 @@ type (
 		routingKey   string
 		wg           sync.WaitGroup
 		ready        guardLock
+		closing      atomic.Bool
 	}
 
 	ExchangeDeclare struct {
@@ -75,7 +77,7 @@ func (p *Publisher[T]) swapChannel(connection *amqp091.Connection, cfg Config[T]
 func (p *Publisher[T]) onConnectionReady(cfg Config[T]) connection.OnConnectionReady {
 	return func(ctx context.Context, connection *amqp091.Connection) error {
 		p.wg.Add(1)
-		notifyClose:=p.swapChannel(connection, cfg, nil)
+		notifyClose := p.swapChannel(connection, cfg, nil)
 		go func() {
 			defer p.wg.Done()
 			errCh := make(chan error)
@@ -199,8 +201,13 @@ func New[T any](exchangeName string, options ...Option[T]) (*Publisher[T], error
 }
 
 func (p *Publisher[T]) Publish(ctx context.Context, msg T) error {
+	if p.closing.Load() {
+		return errors.New("publisher is closed")
+	}
+
 	p.ready.RLock()
 	defer p.ready.RUnlock()
+
 	body, err := p.serializer.Marshal(msg)
 	if err != nil {
 		return err
@@ -222,8 +229,10 @@ func (p *Publisher[T]) Publish(ctx context.Context, msg T) error {
 }
 
 func (p *Publisher[T]) Close() error {
+	p.closing.Store(true)
 	p.ready.Lock()
 	p.cancel()
 	p.wg.Wait()
+	p.ch = nil
 	return p.conn.Close()
 }
