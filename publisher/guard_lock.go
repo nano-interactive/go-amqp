@@ -6,7 +6,7 @@ import (
 )
 
 type guardLock struct {
-	mu sync.RWMutex
+	mu     sync.RWMutex
 	locked atomic.Bool
 }
 
