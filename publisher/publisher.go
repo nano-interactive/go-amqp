@@ -222,6 +222,7 @@ func (p *Publisher[T]) Publish(ctx context.Context, msg T) error {
 }
 
 func (p *Publisher[T]) Close() error {
+	p.ready.Lock()
 	p.cancel()
 	p.wg.Wait()
 	return p.conn.Close()
