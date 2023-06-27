@@ -66,7 +66,7 @@ func TestPublisherNew(t *testing.T) {
 	})
 
 	t.Run("ConnectionFailed", func(t *testing.T) {
-		ctx , cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 
 		t.Cleanup(cancel)
 
@@ -74,8 +74,8 @@ func TestPublisherNew(t *testing.T) {
 			"test_exchange",
 			publisher.WithContext[Msg](ctx),
 			publisher.WithConnectionOptions[Msg](connection.Config{
-				Host: "localhost",
-				Port: 1234,
+				Host:           "localhost",
+				Port:           1234,
 				ReconnectRetry: 2,
 			}),
 		)
@@ -105,6 +105,7 @@ func TestPublisherPublish(t *testing.T) {
 		assert.Len(messages, 1)
 		assert.Equal("test", messages[0].Name)
 	})
+
 
 	t.Run("WithSerializer", func(t *testing.T) {
 		mappings := amqp_testing.NewMappings(t).
@@ -188,6 +189,18 @@ func TestPublisherClose(t *testing.T) {
 		assert.NotNil(pub)
 
 		assert.NoError(pub.Close())
+	})
+
+	t.Run("Call_To_Publish_After_Close", func(t *testing.T) {
+		mappings := amqp_testing.NewMappings(t).
+			AddMapping("test_exchange", "test_queue")
+
+		pub, err := publisher.New[Msg](mappings.Exchange("test_exchange"))
+		assert.NoError(err)
+		assert.NotNil(pub)
+
+		assert.NoError(pub.Close())
+		assert.ErrorIs(pub.Publish(context.Background(), Msg{Name: "test"}), publisher.ErrClosed)
 	})
 
 	t.Run("Multiple_Close_Calling", func(t *testing.T) {

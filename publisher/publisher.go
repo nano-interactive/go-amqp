@@ -16,7 +16,10 @@ import (
 	"github.com/nano-interactive/go-amqp/v2/serializer"
 )
 
-var ErrChannelNotReady = errors.New("publishing channel is not ready")
+var (
+	ErrChannelNotReady = errors.New("publishing channel is not ready")
+	ErrClosed          = errors.New("publisher is closed")
+)
 
 type (
 	Pub[T any] interface {
@@ -200,12 +203,21 @@ func New[T any](exchangeName string, options ...Option[T]) (*Publisher[T], error
 	return publisher, nil
 }
 
-func (p *Publisher[T]) Publish(ctx context.Context, msg T) error {
+type PublishConfig struct {
+	NonBlocking bool
+}
+
+var defaultPublishConfig = PublishConfig{
+	NonBlocking: false,
+}
+
+func (p *Publisher[T]) Publish(ctx context.Context, msg T, config ...PublishConfig) error {
 	if p.closing.Load() {
-		return errors.New("publisher is closed")
+		return ErrClosed
 	}
 
 	p.ready.RLock()
+
 	defer p.ready.RUnlock()
 
 	body, err := p.serializer.Marshal(msg)
