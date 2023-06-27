@@ -32,7 +32,7 @@ type (
 		exchangeName string
 		routingKey   string
 		wg           sync.WaitGroup
-		ready        sync.RWMutex
+		ready        guardLock
 	}
 
 	ExchangeDeclare struct {
@@ -57,58 +57,51 @@ func (e ExchangeDeclare) declare(ch *amqp091.Channel, logger amqp.Logger) error 
 	return nil
 }
 
-func (publisher *Publisher[T]) onConnectionReady(cfg Config[T]) connection.OnConnectionReady {
-	return func(ctx context.Context, connection *amqp091.Connection) error {
-		chOrigin, notifyClose, err := newChannel(
-			connection,
-			cfg.exchange,
-			cfg.logger,
-		)
-		if err != nil {
-			return err
-		}
+func (p *Publisher[T]) swapChannel(connection *amqp091.Connection, cfg Config[T], errCh chan<- error) chan *amqp091.Error {
+	p.ready.Lock()
+	chOrigin, notifyClose, err := newChannel(
+		connection,
+		cfg.exchange,
+		cfg.logger,
+	)
+	if err != nil {
+		errCh <- err
+		return nil
+	}
 
-		publisher.wg.Add(1)
-		publisher.ch = chOrigin
-		publisher.ready.Unlock()
+	p.ch = chOrigin
+	p.ready.Unlock()
+	return notifyClose
+}
+
+func (p *Publisher[T]) onConnectionReady(cfg Config[T]) connection.OnConnectionReady {
+	return func(ctx context.Context, connection *amqp091.Connection) error {
+		p.wg.Add(1)
+		notifyClose:=p.swapChannel(connection, cfg, nil)
 		go func() {
-			defer publisher.wg.Done()
+			defer p.wg.Done()
 			errCh := make(chan error)
 			defer close(errCh)
 
 			for {
 				select {
 				case <-ctx.Done():
-					publisher.ready.Lock()
-					if !publisher.ch.IsClosed() {
-						if err = publisher.ch.Close(); err != nil {
+					p.ready.Lock()
+					if !p.ch.IsClosed() {
+						if err := p.ch.Close(); err != nil {
 							cfg.logger.Error("Failed to close channel: %v", err)
 						}
 					}
-					publisher.ready.Unlock()
+					p.ready.Unlock()
 					return
 				case <-errCh:
-					publisher.ready.Lock()
-
-					chOrigin, notifyClose, err = newChannel(
-						connection,
-						cfg.exchange,
-						cfg.logger,
-					)
-
-					if err != nil {
-						errCh <- err
-						publisher.ready.Unlock()
-						continue
-					}
-
-					publisher.ch = chOrigin
-					publisher.ready.Unlock()
-
+					notifyClose = p.swapChannel(connection, cfg, errCh)
 				case err, ok := <-notifyClose:
 					if !ok {
 						return
 					}
+
+					p.ready.Lock()
 
 					if connection.IsClosed() {
 						cfg.logger.Error("Connection closed")
@@ -159,7 +152,7 @@ func New[T any](exchangeName string, options ...Option[T]) (*Publisher[T], error
 		messageBuffering:  1,
 		connectionOptions: connection.DefaultConfig,
 		ctx:               context.Background(),
-		exchange: 		ExchangeDeclare{
+		exchange: ExchangeDeclare{
 			name:       exchangeName,
 			RoutingKey: "",
 			Type:       ExchangeTypeFanout,
@@ -167,7 +160,7 @@ func New[T any](exchangeName string, options ...Option[T]) (*Publisher[T], error
 			AutoDelete: false,
 			Internal:   false,
 			NoWait:     false,
-			Args: 	 nil,
+			Args:       nil,
 		},
 		onError: func(err error) {
 			if errors.Is(err, connection.ErrRetriesExhausted) {
