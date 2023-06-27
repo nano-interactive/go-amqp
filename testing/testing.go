@@ -138,12 +138,6 @@ func (q *QueueExchangeMapping) declareExchange(exchangeCfg PublisherConfig) {
 		durable = false
 	}
 
-	autoDelete := true
-
-	if !exchangeCfg.Config.AutoDelete {
-		autoDelete = false
-	}
-
 	args := make(amqp091.Table)
 
 	if exchangeCfg.Config.Args != nil {
@@ -154,7 +148,7 @@ func (q *QueueExchangeMapping) declareExchange(exchangeCfg PublisherConfig) {
 		exchangeCfg.Name,
 		kind,
 		durable,
-		autoDelete,
+		exchangeCfg.Config.AutoDelete,
 		exchangeCfg.Config.Internal,
 		exchangeCfg.Config.NoWait,
 		args,
@@ -174,15 +168,10 @@ func (q *QueueExchangeMapping) declareQueue(queue ConsumerConfig, exchangeName, 
 		durable = false
 	}
 
-	autoDelete := true
-	if !queue.Config.AutoDelete {
-		autoDelete = false
-	}
-
 	_, err := q.channel.QueueDeclare(
 		queue.Config.QueueName,
 		durable,
-		autoDelete,
+		queue.Config.AutoDelete,
 		queue.Config.Exclusive,
 		queue.Config.NoWait,
 		nil,
