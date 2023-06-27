@@ -4,18 +4,51 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/rabbitmq/amqp091-go"
 
-	"github.com/nano-interactive/go-amqp/connection"
-	"github.com/nano-interactive/go-amqp/consumer"
-	"github.com/nano-interactive/go-amqp/publisher"
+	"github.com/nano-interactive/go-amqp/v2/connection"
+	"github.com/nano-interactive/go-amqp/v2/consumer"
+	"github.com/nano-interactive/go-amqp/v2/publisher"
 )
 
 func GetAMQPConnection(t testing.TB, cfg connection.Config) (*amqp091.Connection, *amqp091.Channel) {
 	t.Helper()
+
+	if cfg.Channels == 0 {
+		cfg.Channels = connection.DefaultConfig.Channels
+	}
+
+	if cfg.Vhost == "" {
+		cfg.Vhost = connection.DefaultConfig.Vhost
+	}
+
+	if cfg.Host == "" {
+		cfg.Host = connection.DefaultConfig.Host
+	}
+
+	if cfg.Port == 0 {
+		cfg.Port = connection.DefaultConfig.Port
+	}
+
+	if cfg.User == "" {
+		cfg.User = connection.DefaultConfig.User
+	}
+
+	if cfg.Password == "" {
+		cfg.Password = connection.DefaultConfig.Password
+	}
+
+	if cfg.ReconnectInterval == 0 {
+		cfg.ReconnectInterval = connection.DefaultConfig.ReconnectInterval
+	}
+
+	if cfg.ReconnectRetry == 0 {
+		cfg.ReconnectRetry = connection.DefaultConfig.ReconnectRetry
+	}
 
 	connectionURI := fmt.Sprintf(
 		"amqp://%s:%s@%s:%d",
@@ -30,7 +63,7 @@ func GetAMQPConnection(t testing.TB, cfg connection.Config) (*amqp091.Connection
 
 	config := amqp091.Config{
 		Vhost:      cfg.Vhost,
-		ChannelMax: 1000,
+		ChannelMax: cfg.Channels,
 		Properties: properties,
 		Dial:       amqp091.DefaultDial(10 * time.Second),
 	}
@@ -70,106 +103,210 @@ type ConsumerConfig struct {
 	Config consumer.QueueDeclare
 }
 
-func SetupAmqp(t testing.TB, cfg connection.Config, queueToExchangeBindings map[*ConsumerConfig]*PublisherConfig) *amqp091.Channel {
-	t.Helper()
-	_, channel := GetAMQPConnection(t, cfg)
-
-	for queue, exchange := range queueToExchangeBindings {
-		if exchange == nil {
-			panic("exchange config is nil")
-		}
-
-		if queue == nil {
-			panic("queue config is nil")
-		}
-
-		queue.Name = fmt.Sprintf("%s-%s", queue.Name, t.Name())
-		exchange.Name = fmt.Sprintf("%s-%s", exchange.Name, t.Name())
-
-		kind := amqp091.ExchangeFanout
-
-		if exchange.Config.Type.String() != "" {
-			kind = exchange.Config.Type.String()
-		}
-
-		durable := true
-		if !exchange.Config.Durable {
-			durable = false
-		}
-
-		autoDelete := true
-
-		if !exchange.Config.AutoDelete {
-			autoDelete = false
-		}
-
-		args := make(amqp091.Table)
-
-		if exchange.Config.Args != nil {
-			args = exchange.Config.Args
-		}
-
-		err := channel.ExchangeDeclare(
-			exchange.Name,
-			kind,
-			durable,
-			autoDelete,
-			exchange.Config.Internal,
-			exchange.Config.NoWait,
-			args,
-		)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		durable = true
-		if !queue.Config.Durable {
-			durable = false
-		}
-
-		autoDelete = true
-		if !queue.Config.AutoDelete {
-			autoDelete = false
-		}
-
-		_, err = channel.QueueDeclare(
-			queue.Name,
-			durable,
-			autoDelete,
-			queue.Config.Exclusive,
-			queue.Config.NoWait,
-			nil,
-		)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		_ = channel.QueueBind(
-			queue.Name,
-			"",
-			exchange.Name,
-			false,
-			nil,
-		)
-
-		t.Cleanup(func() {
-			_, _ = channel.QueueDelete(queue.Name, false, false, false)
-			_ = channel.ExchangeDelete(exchange.Name, false, false)
-		})
-	}
-
-	return channel
+type QueueExchangeMapping struct {
+	t       testing.TB
+	channel *amqp091.Channel
+	mapping map[string][]string
 }
 
+func NewMappings(t testing.TB, config ...connection.Config) *QueueExchangeMapping {
+	t.Helper()
+	cfg := connection.DefaultConfig
+
+	if len(config) > 0 {
+		cfg = config[0]
+	}
+
+	_, channel := GetAMQPConnection(t, cfg)
+
+	return &QueueExchangeMapping{
+		mapping: make(map[string][]string),
+		channel: channel,
+		t:       t,
+	}
+}
+
+func (q *QueueExchangeMapping) declareExchange(exchangeCfg PublisherConfig) {
+	kind := amqp091.ExchangeFanout
+
+	if exchangeCfg.Config.Type.String() != "" {
+		kind = exchangeCfg.Config.Type.String()
+	}
+
+	durable := true
+	if !exchangeCfg.Config.Durable {
+		durable = false
+	}
+
+	autoDelete := true
+
+	if !exchangeCfg.Config.AutoDelete {
+		autoDelete = false
+	}
+
+	args := make(amqp091.Table)
+
+	if exchangeCfg.Config.Args != nil {
+		args = exchangeCfg.Config.Args
+	}
+
+	err := q.channel.ExchangeDeclare(
+		exchangeCfg.Name,
+		kind,
+		durable,
+		autoDelete,
+		exchangeCfg.Config.Internal,
+		exchangeCfg.Config.NoWait,
+		args,
+	)
+	if err != nil {
+		q.t.Fatal(err)
+	}
+
+	q.t.Cleanup(func() {
+		_ = q.channel.ExchangeDelete(exchangeCfg.Name, false, false)
+	})
+}
+
+func (q *QueueExchangeMapping) declareQueue(queue ConsumerConfig, exchangeName, exchangeRoutingKey string) {
+	durable := true
+	if !queue.Config.Durable {
+		durable = false
+	}
+
+	autoDelete := true
+	if !queue.Config.AutoDelete {
+		autoDelete = false
+	}
+
+	_, err := q.channel.QueueDeclare(
+		queue.Config.QueueName,
+		durable,
+		autoDelete,
+		queue.Config.Exclusive,
+		queue.Config.NoWait,
+		nil,
+	)
+	if err != nil {
+		q.t.Fatal(err)
+	}
+
+	_ = q.channel.QueueBind(
+		queue.Config.QueueName,
+		exchangeRoutingKey,
+		exchangeName,
+		false,
+		nil,
+	)
+
+	q.t.Cleanup(func() {
+		_ = q.channel.QueueUnbind(queue.Config.QueueName, exchangeRoutingKey, exchangeName, nil)
+		_, _ = q.channel.QueueDelete(queue.Config.QueueName, false, false, false)
+	})
+}
+
+func (q *QueueExchangeMapping) AddMapping(exchange string, queue ...string) *QueueExchangeMapping {
+	q.t.Helper()
+
+	if len(queue) == 0 {
+		q.t.Fatal("no queues provided")
+	}
+
+	cfg := make([]ConsumerConfig, len(queue))
+
+	for i, v := range queue {
+		cfg[i] = ConsumerConfig{
+			Name: v,
+			Config: consumer.QueueDeclare{
+				QueueName:  v,
+				Durable:    true,
+				AutoDelete: false,
+				Exclusive:  false,
+				NoWait:     false,
+			},
+		}
+	}
+
+	return q.AddMappings(
+		PublisherConfig{
+			Name: exchange,
+			Config: publisher.ExchangeDeclare{
+				Type:       publisher.ExchangeTypeFanout,
+				Durable:    true,
+				AutoDelete: false,
+				Internal:   false,
+				NoWait:     false,
+				Args:       nil,
+			},
+		},
+		cfg,
+	)
+}
+
+func (q *QueueExchangeMapping) AddMappingConfig(exchangeCfg PublisherConfig, queue ConsumerConfig) *QueueExchangeMapping {
+	return q.AddMappings(exchangeCfg, []ConsumerConfig{queue})
+}
+
+func (q *QueueExchangeMapping) AddMappings(exchangeCfg PublisherConfig, queue []ConsumerConfig) *QueueExchangeMapping {
+	exchangeCfg.Name = fmt.Sprintf("%s-%s", exchangeCfg.Name, q.t.Name())
+
+	q.declareExchange(exchangeCfg)
+
+	for _, queueCfg := range queue {
+		queueCfg.Config.QueueName = fmt.Sprintf("%s-%s", queueCfg.Config.QueueName, q.t.Name())
+
+		q.declareQueue(queueCfg, exchangeCfg.Name, exchangeCfg.Config.RoutingKey)
+
+		q.mapping[exchangeCfg.Name] = append(q.mapping[exchangeCfg.Name], queueCfg.Config.QueueName)
+	}
+
+	return q
+}
+
+func (q QueueExchangeMapping) Exchange(prefix string) string {
+	for exchangeName := range q.mapping {
+		if strings.HasPrefix(exchangeName, prefix+"-") {
+			return exchangeName
+		}
+	}
+
+	return ""
+}
+
+func (q QueueExchangeMapping) Queue(prefix string) string {
+	for _, queues := range q.mapping {
+		for _, queueName := range queues {
+			if strings.HasPrefix(queueName, prefix+"-") {
+				return queueName
+			}
+		}
+	}
+
+	return ""
+}
+
+func AssertAMQPMessageCount[T any](
+	t testing.TB,
+	queueName string,
+	expectedCount int,
+	duration ...time.Duration,
+) []T {
+	messages := ConsumeAMQPMessages[T](t, queueName, duration...)
+
+	if len(messages) != expectedCount {
+		t.Fatalf("expected %d messages, got %d", expectedCount, len(messages))
+	}
+
+	return messages
+}
 
 func ConsumeAMQPMessages[T any](
 	t testing.TB,
-	ctx context.Context,
-	channel *amqp091.Channel,
 	queueName string,
+	duration ...time.Duration,
 ) []T {
-	t.Helper()
 	messages := make([]T, 0, 10)
+	_, channel := GetAMQPConnection(t, connection.DefaultConfig)
 
 	ch, err := channel.Consume(
 		queueName,
@@ -182,6 +319,14 @@ func ConsumeAMQPMessages[T any](
 	)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+
+	if len(duration) > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, duration[0])
+		t.Cleanup(cancel)
 	}
 
 	for {
@@ -208,27 +353,54 @@ func ConsumeAMQPMessages[T any](
 	}
 }
 
-func PublishAMQPMessage[T any](
+type PublishConfig struct {
+	Marshal     func(any) ([]byte, error)
+	RoutingKey  string
+	ContentType string
+	Duration    time.Duration
+}
+
+func PublishAMQPMessage(
 	t testing.TB,
-	ctx context.Context,
-	channel *amqp091.Channel,
 	exchange string,
-	msg T,
+	msg any,
+	config ...PublishConfig,
 ) {
-	t.Helper()
-	message, err := json.Marshal(msg)
+	cfg := PublishConfig{Duration: 0, RoutingKey: "", Marshal: json.Marshal, ContentType: "application/json"}
+	if len(config) > 0 {
+		if config[0].Marshal == nil {
+			config[0].Marshal = json.Marshal
+		}
+
+		if config[0].ContentType == "" {
+			config[0].ContentType = "application/json"
+		}
+
+		cfg = config[0]
+	}
+
+	message, err := cfg.Marshal(msg)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	_, channel := GetAMQPConnection(t, connection.DefaultConfig)
+	ctx := context.Background()
+
+	if cfg.Duration > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, cfg.Duration)
+		t.Cleanup(cancel)
 	}
 
 	err = channel.PublishWithContext(
 		ctx,
 		exchange,
-		"",
+		cfg.RoutingKey,
 		false,
 		false,
 		amqp091.Publishing{
-			ContentType:  "application/json",
+			ContentType:  cfg.ContentType,
 			DeliveryMode: amqp091.Persistent,
 			Timestamp:    time.Now(),
 			Body:         message,

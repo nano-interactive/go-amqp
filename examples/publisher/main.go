@@ -6,8 +6,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/nano-interactive/go-amqp/connection"
-	"github.com/nano-interactive/go-amqp/publisher"
+	"github.com/nano-interactive/go-amqp/v2/connection"
+	"github.com/nano-interactive/go-amqp/v2/publisher"
 )
 
 type logger struct{}

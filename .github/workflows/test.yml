@@ -12,18 +12,30 @@ on:
       - develop
 jobs:
   test:
+    services:
+      rabbitmq:
+        image: rabbitmq:3.9-alpine
+        env:
+          RABBITMQ_DEFAULT_USER: guest
+          RABBITMQ_DEFAULT_PASS: guest
+        ports:
+          - '5672:5672'
     strategy:
       matrix:
         os: [ubuntu-latest]
         go: ['1.20']
     runs-on: ${{ matrix.os }}
-    container: golang:${{ matrix.go }}-bullseye
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-      - uses: actions/cache@v2
+      - uses: actions/setup-go@v4
         with:
-          path: ~/go/pkg/mod
+          go-version: ${{ matrix.go }}
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-

@@ -62,6 +62,7 @@ func New(ctx context.Context, config Config, events Events) (*Connection, error)
 	}
 
 	newCtx, cancel := context.WithCancel(ctx)
+
 	c := &Connection{
 		Config:                  &config,
 		cancel:                  cancel,
@@ -70,11 +71,21 @@ func New(ctx context.Context, config Config, events Events) (*Connection, error)
 		onError:                 events.OnError,
 	}
 
-	if err := c.connect()(newCtx); err != nil {
-		return nil, err
+	var err error
+
+	connect := c.connect()
+
+	if err = connect(newCtx); err == nil {
+		return c, nil
 	}
 
-	return c, nil
+	for i := 0; i < config.ReconnectRetry; i++ {
+		if err = connect(newCtx); err == nil {
+			return c, nil
+		}
+	}
+
+	return nil, err
 }
 
 func (c *Connection) handleReconnect(ctx context.Context, connection *amqp091.Connection, connect func(ctx context.Context) error) {
@@ -130,15 +141,6 @@ func (c *Connection) connect() func(ctx context.Context) error {
 	properties.SetClientConnectionName(c.ConnectionName)
 
 	return func(ctx context.Context) error {
-		if c.onBeforeConnectionReady != nil {
-			if err := c.onBeforeConnectionReady(ctx); err != nil {
-				if c.onError != nil {
-					c.onError(&OnBeforeConnectError{Err: err})
-				}
-				return err
-			}
-		}
-
 		if err := c.connectionDispose(); err != nil && c.onError != nil {
 			c.onError(&OnConnectionCloseError{Err: err})
 		}
@@ -148,7 +150,16 @@ func (c *Connection) connect() func(ctx context.Context) error {
 			ChannelMax: c.Channels,
 			Heartbeat:  1 * time.Second,
 			Properties: properties,
-			Dial:       amqp091.DefaultDial(10 * time.Second),
+			Dial:       amqp091.DefaultDial(c.ReconnectInterval),
+		}
+
+		if c.onBeforeConnectionReady != nil {
+			if err := c.onBeforeConnectionReady(ctx); err != nil {
+				if c.onError != nil {
+					c.onError(&OnBeforeConnectError{Err: err})
+				}
+				return err
+			}
 		}
 
 		conn, err := amqp091.DialConfig(connectionURI, config)

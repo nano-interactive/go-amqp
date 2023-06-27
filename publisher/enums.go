@@ -19,6 +19,8 @@ func (e ExchangeType) String() string {
 		return amqp091.ExchangeFanout
 	case ExchangeTypeTopic:
 		return amqp091.ExchangeTopic
+	case ExchangeTypeHeader:
+		return amqp091.ExchangeHeaders
 	default:
 		panic("invalid exchange type")
 	}

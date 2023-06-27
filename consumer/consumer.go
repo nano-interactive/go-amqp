@@ -4,21 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"reflect"
 
-	"github.com/nano-interactive/go-amqp"
-	"github.com/nano-interactive/go-amqp/connection"
-	"github.com/nano-interactive/go-amqp/serializer"
+	"github.com/nano-interactive/go-amqp/v2/connection"
+	"github.com/nano-interactive/go-amqp/v2/logging"
+	"github.com/nano-interactive/go-amqp/v2/serializer"
 )
 
 type (
 	Message interface{}
-
-	Sub[T Message] interface {
-		io.Closer
-	}
 
 	Consumer[T Message] struct {
 		queues *queue
@@ -39,7 +34,7 @@ func NewRaw[T Message](handler RawHandler, queueDeclare QueueDeclare, options ..
 		},
 		retryCount: 1,
 		serializer: serializer.JsonSerializer[T]{},
-		logger:     amqp.EmptyLogger{},
+		logger:     logging.EmptyLogger{},
 		ctx:        context.Background(),
 		onError: func(err error) {
 			if errors.Is(err, connection.ErrRetriesExhausted) {

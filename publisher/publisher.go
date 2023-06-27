@@ -4,23 +4,21 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/rabbitmq/amqp091-go"
 
-	"github.com/nano-interactive/go-amqp"
-	"github.com/nano-interactive/go-amqp/connection"
-	"github.com/nano-interactive/go-amqp/serializer"
+	"github.com/nano-interactive/go-amqp/v2/connection"
+	"github.com/nano-interactive/go-amqp/v2/logging"
+	"github.com/nano-interactive/go-amqp/v2/serializer"
 )
 
 var ErrChannelNotReady = errors.New("publishing channel is not ready")
 
 type (
 	Pub[T any] interface {
-		io.Closer
 		Publish(ctx context.Context, msg T) error
 	}
 
@@ -47,7 +45,7 @@ type (
 	}
 )
 
-func (e ExchangeDeclare) declare(ch *amqp091.Channel, logger amqp.Logger) error {
+func (e ExchangeDeclare) declare(ch *amqp091.Channel, logger logging.Logger) error {
 	err := ch.ExchangeDeclare(e.name, e.Type.String(), e.Durable, e.AutoDelete, e.Internal, e.NoWait, e.Args)
 	if err != nil {
 		logger.Error("Failed to declare exchange: %s(%s) %v", e.name, e.Type, err)
@@ -124,7 +122,7 @@ func (p *Publisher[T]) onConnectionReady(cfg Config[T]) connection.OnConnectionR
 func newChannel(
 	connection *amqp091.Connection,
 	exchange ExchangeDeclare,
-	logger amqp.Logger,
+	logger logging.Logger,
 ) (*amqp091.Channel, chan *amqp091.Error, error) {
 	ch, err := connection.Channel()
 	if err != nil {
@@ -148,7 +146,7 @@ func New[T any](exchangeName string, options ...Option[T]) (*Publisher[T], error
 
 	cfg := Config[T]{
 		serializer:        serializer.JsonSerializer[T]{},
-		logger:            amqp.EmptyLogger{},
+		logger:            logging.EmptyLogger{},
 		messageBuffering:  1,
 		connectionOptions: connection.DefaultConfig,
 		ctx:               context.Background(),

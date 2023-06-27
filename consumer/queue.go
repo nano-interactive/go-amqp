@@ -5,8 +5,8 @@ import (
 
 	"github.com/rabbitmq/amqp091-go"
 
-	"github.com/nano-interactive/go-amqp"
-	"github.com/nano-interactive/go-amqp/connection"
+	"github.com/nano-interactive/go-amqp/v2/connection"
+	"github.com/nano-interactive/go-amqp/v2/logging"
 )
 
 type (
@@ -16,7 +16,7 @@ type (
 	}
 
 	queue struct {
-		logger     amqp.Logger
+		logger     logging.Logger
 		connection *connection.Connection
 	}
 )

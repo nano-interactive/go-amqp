@@ -9,9 +9,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/nano-interactive/go-amqp/connection"
-	"github.com/nano-interactive/go-amqp/consumer"
 	"github.com/rabbitmq/amqp091-go"
+
+	"github.com/nano-interactive/go-amqp/v2/connection"
+	"github.com/nano-interactive/go-amqp/v2/consumer"
 )
 
 type Message struct {
