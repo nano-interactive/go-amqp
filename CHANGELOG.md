@@ -11,15 +11,18 @@
 * `PublishAMQPMessage` no longer accepts `*amqp091.Channel`
 * `PublishAMQPMessage` no longer accepts `context.Context`
 * `Logger` moved to `logging` package
+* `publisher.Pub[T]` has additional parameter for config -> future Use
 
 ## Features
 
 * Added `testing.AssertAMQPMessageCount`
 * Added `testing.PublishConfig` to declare AMQP Exchange params
 * Added missing `ExchangeTypeHeader` to publisher
+
 ## Bugfixes
 
 * When connecting for the first time, `connection.Connection` respects `connection.Config.ReconnectRetry` and `connection.Config.ReconnectInterval`
+* Deadlock on `publisher` when connecting more than once -> locked mutex
 
 # v1.1.0
 

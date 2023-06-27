@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -21,9 +22,12 @@ var (
 	ErrClosed          = errors.New("publisher is closed")
 )
 
+var _ Pub[any] = (*Publisher[any])(nil)
+var _ io.Closer = (*Publisher[any])(nil)
+
 type (
 	Pub[T any] interface {
-		Publish(ctx context.Context, msg T) error
+		Publish(context.Context, T, ...PublishConfig) error
 	}
 
 	Publisher[T any] struct {

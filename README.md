@@ -27,7 +27,7 @@ go get github.com/nano-interactive/go-amqp/v2
 
 // Publisher
 type Pub[T any] interface {
-    Publish(ctx context.Context, msg T) error
+    Publish(context.Context, T, ...PublishConfig) error
 }
 
 // Creator functions for Consumer

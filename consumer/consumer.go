@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"reflect"
 
@@ -11,6 +12,9 @@ import (
 	"github.com/nano-interactive/go-amqp/v2/logging"
 	"github.com/nano-interactive/go-amqp/v2/serializer"
 )
+
+var _ io.Closer = *(*Consumer[any])(nil)
+var _ io.Closer = (*Consumer[any])(nil)
 
 type (
 	Message interface{}
