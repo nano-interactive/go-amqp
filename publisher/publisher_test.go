@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/nano-interactive/go-amqp/v2/connection"
 	"github.com/nano-interactive/go-amqp/v2/publisher"
 	"github.com/nano-interactive/go-amqp/v2/serializer"
 	amqp_testing "github.com/nano-interactive/go-amqp/v2/testing"
@@ -62,6 +63,25 @@ func TestPublisherNew(t *testing.T) {
 
 		assert.NoError(err)
 		assert.NotNil(pub)
+	})
+
+	t.Run("ConnectionFailed", func(t *testing.T) {
+		ctx , cancel := context.WithTimeout(context.Background(), 2*time.Second)
+
+		t.Cleanup(cancel)
+
+		pub, err := publisher.New[Msg](
+			"test_exchange",
+			publisher.WithContext[Msg](ctx),
+			publisher.WithConnectionOptions[Msg](connection.Config{
+				Host: "localhost",
+				Port: 1234,
+				ReconnectRetry: 2,
+			}),
+		)
+
+		assert.Error(err)
+		assert.Nil(pub)
 	})
 }
 
