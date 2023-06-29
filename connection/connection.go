@@ -80,6 +80,8 @@ func New(ctx context.Context, config Config, events Events) (*Connection, error)
 	}
 
 	for i := 0; i < config.ReconnectRetry; i++ {
+		time.Sleep(config.ReconnectInterval)
+
 		if err = connect(newCtx); err == nil {
 			return c, nil
 		}
@@ -101,7 +103,7 @@ func (c *Connection) handleReconnect(ctx context.Context, connection *amqp091.Co
 
 			if c.closing.Load() {
 				if err := c.connectionDispose(); err != nil && c.onError != nil {
-					c.onError(&OnConnectionCloseError{Err: err})
+					c.onError(&OnConnectionCloseError{inner: err})
 				}
 
 				return
@@ -142,7 +144,7 @@ func (c *Connection) connect() func(ctx context.Context) error {
 
 	return func(ctx context.Context) error {
 		if err := c.connectionDispose(); err != nil && c.onError != nil {
-			c.onError(&OnConnectionCloseError{Err: err})
+			c.onError(&OnConnectionCloseError{inner: err})
 		}
 
 		config := amqp091.Config{
@@ -156,7 +158,7 @@ func (c *Connection) connect() func(ctx context.Context) error {
 		if c.onBeforeConnectionReady != nil {
 			if err := c.onBeforeConnectionReady(ctx); err != nil {
 				if c.onError != nil {
-					c.onError(&OnBeforeConnectError{Err: err})
+					c.onError(&OnBeforeConnectError{inner: err})
 				}
 				return err
 			}
@@ -164,7 +166,7 @@ func (c *Connection) connect() func(ctx context.Context) error {
 
 		conn, err := amqp091.DialConfig(connectionURI, config)
 		if err != nil {
-			c.onError(&ConnectInitError{Err: err})
+			c.onError(&ConnectInitError{inner: err})
 			return err
 		}
 
@@ -175,7 +177,7 @@ func (c *Connection) connect() func(ctx context.Context) error {
 
 		if err = c.onConnectionReady(ctx, conn); err != nil {
 			if c.onError != nil {
-				c.onError(&ConnectInitError{Err: err})
+				c.onError(&ConnectInitError{inner: err})
 			}
 
 			return err

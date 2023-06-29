@@ -2,6 +2,7 @@ package consumer
 
 import (
 	"context"
+	"sync"
 
 	"github.com/rabbitmq/amqp091-go"
 
@@ -22,19 +23,39 @@ type (
 )
 
 func newQueue[T any](base context.Context, cfg Config[T], queueDeclare QueueDeclare, handler RawHandler) (*queue, error) {
+	ctx, cancel := context.WithCancel(base)
+
+	var wg sync.WaitGroup
+
 	conn, err := connection.New(base, cfg.connectionOptions, connection.Events{
-		OnConnectionReady: func(ctx context.Context, connection *amqp091.Connection) error {
+		OnBeforeConnectionReady: func(_ context.Context) error {
+			cancel()
+			wg.Wait()
+			ctx, cancel = context.WithCancel(base)
+			return nil
+		},
+
+		OnConnectionReady: func(_ context.Context, connection *amqp091.Connection) error {
 			watchDog := make(chan int, cfg.queueConfig.Workers)
 			for i := 0; i < cfg.queueConfig.Workers; i++ {
 				watchDog <- i + 1
 			}
 
-			watcher, err := watchdog(ctx, connection, watchDog, cfg.onError, cfg, queueDeclare, handler)
+			wg.Add(1)
+			watcher, err := watchdog(
+				ctx,
+				connection,
+				watchDog,
+				cfg.onError,
+				cfg,
+				queueDeclare,
+				handler,
+			)
 			if err != nil {
 				return err
 			}
 
-			go watcher()
+			go watcher(&wg)
 
 			return nil
 		},

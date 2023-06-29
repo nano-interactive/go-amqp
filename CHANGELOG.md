@@ -1,3 +1,11 @@
+# dev
+
+
+## Bufix
+
+* WatchDog leak on reconnect
+* Sleep after initial connection fail
+
 # 2.0.3
 ## Bufix
 

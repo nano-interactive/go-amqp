@@ -18,8 +18,8 @@ func watchdog[T any](
 	cfg Config[T],
 	queueDeclare QueueDeclare,
 	handler RawHandler,
-) (func(), error) {
-	var wg sync.WaitGroup
+) (func(*sync.WaitGroup), error) {
+	var inner sync.WaitGroup
 
 	channel, err := conn.Channel()
 	if err != nil {
@@ -59,7 +59,8 @@ func watchdog[T any](
 		return nil, fmt.Errorf("failed to declare queue: %v", err)
 	}
 
-	return func() {
+	return func(wg *sync.WaitGroup) {
+		defer wg.Done()
 		newCtx, cancel := context.WithCancel(ctx)
 		defer close(workerExit)
 		defer cancel()
@@ -67,10 +68,10 @@ func watchdog[T any](
 		for {
 			select {
 			case <-ctx.Done():
-				wg.Wait()
+				inner.Wait()
 				return
 			case id := <-workerExit:
-				wg.Add(1)
+				inner.Add(1)
 
 				l := newListener(
 					id,
@@ -82,7 +83,7 @@ func watchdog[T any](
 				)
 
 				go func() {
-					defer wg.Done()
+					defer inner.Done()
 					if cfg.onListenerStart != nil {
 						cfg.onListenerStart(newCtx, id)
 					}

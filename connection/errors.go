@@ -3,25 +3,25 @@ package connection
 import "fmt"
 
 type OnBeforeConnectError struct {
-	Err error
+	inner error
 }
 
 type ConnectInitError struct {
-	Err error
+	inner error
 }
 
 type OnConnectionCloseError struct {
-	Err error
+	inner error
 }
 
 func (e OnBeforeConnectError) Error() string {
-	return fmt.Sprintf("non library error before reconnecting: %v", e.Err)
+	return fmt.Sprintf("non library error before reconnecting: %v", e.inner)
 }
 
 func (e ConnectInitError) Error() string {
-	return fmt.Sprintf("non library error after reconnect: %v", e.Err)
+	return fmt.Sprintf("non library error after reconnect: %v", e.inner)
 }
 
 func (e OnConnectionCloseError) Error() string {
-	return fmt.Sprintf("error on closing previous connection: %v", e.Err)
+	return fmt.Sprintf("error on closing previous connection: %v", e.inner)
 }
