@@ -15,7 +15,7 @@ func (g *guardLock) Lock() {
 		return
 	}
 
-	g.mu.TryLock()
+	g.mu.Lock()
 	g.locked.Store(true)
 }
 
