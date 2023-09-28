@@ -356,7 +356,7 @@ func PublishAMQPMessage(
 	t testing.TB,
 	exchange string,
 	msg any,
-		conn connection.Config,
+	conn connection.Config,
 	config ...PublishConfig,
 ) {
 	cfg := PublishConfig{Duration: 0, RoutingKey: "", Marshal: json.Marshal, ContentType: "application/json"}
@@ -403,4 +403,6 @@ func PublishAMQPMessage(
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	t.Logf("Published message")
 }
