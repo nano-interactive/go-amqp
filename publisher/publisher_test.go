@@ -106,7 +106,6 @@ func TestPublisherPublish(t *testing.T) {
 		assert.Equal("test", messages[0].Name)
 	})
 
-
 	t.Run("WithSerializer", func(t *testing.T) {
 		mappings := amqp_testing.NewMappings(t).
 			AddMapping("test_exchange", "test_queue")

@@ -22,8 +22,10 @@ var (
 	ErrClosed          = errors.New("publisher is closed")
 )
 
-var _ Pub[any] = (*Publisher[any])(nil)
-var _ io.Closer = (*Publisher[any])(nil)
+var (
+	_ Pub[any]  = (*Publisher[any])(nil)
+	_ io.Closer = (*Publisher[any])(nil)
+)
 
 type (
 	Pub[T any] interface {
@@ -40,6 +42,7 @@ type (
 		wg           sync.WaitGroup
 		ready        guardLock
 		closing      atomic.Bool
+		gettingCh    atomic.Bool
 	}
 
 	ExchangeDeclare struct {
@@ -64,27 +67,30 @@ func (e ExchangeDeclare) declare(ch *amqp091.Channel, logger logging.Logger) err
 	return nil
 }
 
-func (p *Publisher[T]) swapChannel(connection *amqp091.Connection, cfg Config[T], errCh chan<- error) chan *amqp091.Error {
+func (p *Publisher[T]) swapChannel(connection *amqp091.Connection, cfg Config[T]) (chan *amqp091.Error, error) {
+	p.gettingCh.Store(true)
 	p.ready.Lock()
-	chOrigin, notifyClose, err := newChannel(
-		connection,
-		cfg.exchange,
-		cfg.logger,
-	)
+	defer p.ready.Unlock()
+
+	chOrigin, notifyClose, err := newChannel(connection, cfg.exchange, cfg.logger)
+
 	if err != nil {
-		errCh <- err
-		return nil
+		return nil, err
 	}
 
 	p.ch = chOrigin
-	p.ready.Unlock()
-	return notifyClose
+	return notifyClose, nil
 }
 
 func (p *Publisher[T]) onConnectionReady(cfg Config[T]) connection.OnConnectionReady {
 	return func(ctx context.Context, connection *amqp091.Connection) error {
 		p.wg.Add(1)
-		notifyClose := p.swapChannel(connection, cfg, nil)
+		notifyClose, err := p.swapChannel(connection, cfg)
+
+		if err != nil {
+			return err
+		}
+
 		go func() {
 			defer p.wg.Done()
 			errCh := make(chan error)
@@ -102,7 +108,12 @@ func (p *Publisher[T]) onConnectionReady(cfg Config[T]) connection.OnConnectionR
 					p.ready.Unlock()
 					return
 				case <-errCh:
-					notifyClose = p.swapChannel(connection, cfg, errCh)
+					notifyClose, err = p.swapChannel(connection, cfg)
+					if err != nil {
+						errCh <- err
+					} else {
+						p.gettingCh.Store(false)
+					}
 				case err, ok := <-notifyClose:
 					if !ok {
 						return
@@ -211,13 +222,13 @@ type PublishConfig struct {
 	NonBlocking bool
 }
 
-// var defaultPublishConfig = PublishConfig{
-// 	NonBlocking: false,
-// }
-
 func (p *Publisher[T]) Publish(ctx context.Context, msg T, config ...PublishConfig) error {
 	if p.closing.Load() {
 		return ErrClosed
+	}
+
+	if p.gettingCh.Load() {
+		return ErrChannelNotReady
 	}
 
 	p.ready.RLock()
@@ -247,6 +258,8 @@ func (p *Publisher[T]) Publish(ctx context.Context, msg T, config ...PublishConf
 func (p *Publisher[T]) Close() error {
 	p.closing.Store(true)
 	p.ready.Lock()
+	defer p.ready.Unlock()
+	
 	p.cancel()
 	p.wg.Wait()
 	p.ch = nil

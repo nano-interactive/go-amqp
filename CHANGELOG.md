@@ -1,4 +1,11 @@
-# dev
+# 2.0.7
+
+
+## Bufix
+
+* Publisher deadlock on channel close
+
+# 2.0.4
 
 
 ## Bufix

@@ -33,8 +33,7 @@ type (
 		onBeforeConnectionReady OnReconnectingFunc
 		onConnectionReady       OnConnectionReady
 		onError                 OnErrorFunc
-		once                    sync.Once
-		closing                 atomic.Bool
+		once                    func()
 	}
 
 	Config struct {
@@ -71,14 +70,18 @@ func New(ctx context.Context, config Config, events Events) (*Connection, error)
 		onError:                 events.OnError,
 	}
 
-	var err error
+	c.once = sync.OnceFunc(func() {
+		c.cancel()
+		c.connectionDispose()
+	})
 
 	connect := c.connect()
 
-	if err = connect(newCtx); err == nil {
+	if err := connect(newCtx); err == nil {
 		return c, nil
 	}
 
+	var err error
 	for i := 0; i < config.ReconnectRetry; i++ {
 		time.Sleep(config.ReconnectInterval)
 
@@ -88,6 +91,14 @@ func New(ctx context.Context, config Config, events Events) (*Connection, error)
 	}
 
 	return nil, err
+}
+
+func (c *Connection) hasConnectionClosed(err error) bool {
+	return !errors.Is(err, amqp091.ErrClosed) && c.conn.Load().IsClosed()
+}
+
+func (c *Connection) hasChannelClosed(err error) bool {
+	return errors.Is(err, amqp091.ErrClosed) && !c.conn.Load().IsClosed()
 }
 
 func (c *Connection) handleReconnect(ctx context.Context, connection *amqp091.Connection, connect func(ctx context.Context) error) {
@@ -101,18 +112,11 @@ func (c *Connection) handleReconnect(ctx context.Context, connection *amqp091.Co
 				return
 			}
 
-			if c.closing.Load() {
-				if err := c.connectionDispose(); err != nil && c.onError != nil {
-					c.onError(&OnConnectionCloseError{inner: err})
-				}
-
-				return
-			}
-
-			// No need to reconnect if connection is not closed (this error means that channel is closed)
-			if !errors.Is(amqpErr, amqp091.ErrClosed) && !c.conn.Load().IsClosed() {
+			if c.hasChannelClosed(amqpErr) {
 				continue
 			}
+
+			c.connectionDispose()
 
 			var i int
 
@@ -143,9 +147,7 @@ func (c *Connection) connect() func(ctx context.Context) error {
 	properties.SetClientConnectionName(c.ConnectionName)
 
 	return func(ctx context.Context) error {
-		if err := c.connectionDispose(); err != nil && c.onError != nil {
-			c.onError(&OnConnectionCloseError{inner: err})
-		}
+		c.connectionDispose()
 
 		config := amqp091.Config{
 			Vhost:      c.Vhost,
@@ -170,7 +172,6 @@ func (c *Connection) connect() func(ctx context.Context) error {
 			return err
 		}
 
-		defer c.closing.Store(false)
 		c.conn.Store(conn)
 
 		go c.handleReconnect(ctx, conn, c.connect())
@@ -187,24 +188,20 @@ func (c *Connection) connect() func(ctx context.Context) error {
 	}
 }
 
-func (c *Connection) connectionDispose() error {
-	c.closing.Store(true)
+func (c *Connection) connectionDispose() {
 	conn := c.conn.Load()
 
 	if conn == nil || conn.IsClosed() {
-		return nil
+		return
 	}
 
-	return conn.Close()
+	if err := conn.Close(); err != nil && c.onError != nil {
+		c.onError(&OnConnectionCloseError{inner: err})
+	}
 }
 
 func (c *Connection) Close() error {
-	var err error
+	c.once()
 
-	c.once.Do(func() {
-		c.cancel()
-		err = c.connectionDispose()
-	})
-
-	return err
+	return nil
 }

@@ -399,7 +399,6 @@ func PublishAMQPMessage(
 			Body:         message,
 		},
 	)
-
 	if err != nil {
 		t.Fatal(err)
 	}

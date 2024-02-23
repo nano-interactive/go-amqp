@@ -19,8 +19,6 @@ type (
 		messageBuffering  int
 	}
 
-	PublisherConfig struct{}
-
 	Option[T any] func(*Config[T])
 )
 

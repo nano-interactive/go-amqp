@@ -34,7 +34,6 @@ func watchdog[T any](
 		queueDeclare.NoWait,
 		nil,
 	)
-
 	if err != nil {
 		return nil, err
 	}
