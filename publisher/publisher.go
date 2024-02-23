@@ -40,7 +40,7 @@ type (
 		exchangeName string
 		routingKey   string
 		wg           sync.WaitGroup
-		ready        guardLock
+		ready        sync.RWMutex
 		closing      atomic.Bool
 		gettingCh    atomic.Bool
 	}
@@ -79,6 +79,7 @@ func (p *Publisher[T]) swapChannel(connection *amqp091.Connection, cfg Config[T]
 	}
 
 	p.ch = chOrigin
+	p.gettingCh.Store(false)
 	return notifyClose, nil
 }
 
@@ -99,32 +100,31 @@ func (p *Publisher[T]) onConnectionReady(cfg Config[T]) connection.OnConnectionR
 			for {
 				select {
 				case <-ctx.Done():
+					p.closing.Store(true)
 					p.ready.Lock()
+					defer p.ready.Unlock()
 					if !p.ch.IsClosed() {
 						if err := p.ch.Close(); err != nil {
 							cfg.logger.Error("Failed to close channel: %v", err)
 						}
 					}
-					p.ready.Unlock()
 					return
 				case <-errCh:
 					notifyClose, err = p.swapChannel(connection, cfg)
 					if err != nil {
 						errCh <- err
-					} else {
-						p.gettingCh.Store(false)
 					}
 				case err, ok := <-notifyClose:
 					if !ok {
 						return
 					}
 
-					p.ready.Lock()
-
 					if connection.IsClosed() {
 						cfg.logger.Error("Connection closed")
 						return
 					}
+
+					p.gettingCh.CompareAndSwap(false, true)
 
 					cfg.logger.Error("Channel Error: %v", err)
 					// When connection is still open and channel is closed we need to create new channel
@@ -205,7 +205,7 @@ func New[T any](exchangeName string, options ...Option[T]) (*Publisher[T], error
 	conn, err := connection.New(ctx, cfg.connectionOptions, connection.Events{
 		OnConnectionReady: publisher.onConnectionReady(cfg),
 		OnBeforeConnectionReady: func(ctx context.Context) error {
-			publisher.ready.Lock()
+			publisher.gettingCh.Store(true)
 			return nil
 		},
 		OnError: cfg.onError,
@@ -223,7 +223,7 @@ type PublishConfig struct {
 }
 
 func (p *Publisher[T]) Publish(ctx context.Context, msg T, config ...PublishConfig) error {
-	if p.closing.Load() {
+	if p.conn.IsClosed() {
 		return ErrClosed
 	}
 
@@ -259,7 +259,7 @@ func (p *Publisher[T]) Close() error {
 	p.closing.Store(true)
 	p.ready.Lock()
 	defer p.ready.Unlock()
-	
+
 	p.cancel()
 	p.wg.Wait()
 	p.ch = nil

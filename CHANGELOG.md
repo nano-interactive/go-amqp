@@ -1,5 +1,8 @@
 # 2.0.7
 
+## Features
+
+* Connection IsClosed method added
 
 ## Bufix
 

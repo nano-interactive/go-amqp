@@ -101,6 +101,11 @@ func (c *Connection) hasChannelClosed(err error) bool {
 	return errors.Is(err, amqp091.ErrClosed) && !c.conn.Load().IsClosed()
 }
 
+func (c *Connection) IsClosed() bool {
+	conn := c.conn.Load()
+	return conn != nil && conn.IsClosed()
+}
+
 func (c *Connection) handleReconnect(ctx context.Context, connection *amqp091.Connection, connect func(ctx context.Context) error) {
 	notifyClose := connection.NotifyClose(make(chan *amqp091.Error))
 	for {
