@@ -35,12 +35,11 @@ type (
 	Publisher[T any] struct {
 		serializer   serializer.Serializer[T]
 		conn         *connection.Connection
-		ch           *amqp091.Channel
+		ch           atomic.Pointer[amqp091.Channel]
 		cancel       context.CancelFunc
 		exchangeName string
 		routingKey   string
 		wg           sync.WaitGroup
-		ready        sync.RWMutex
 		closing      atomic.Bool
 		gettingCh    atomic.Bool
 	}
@@ -69,16 +68,13 @@ func (e ExchangeDeclare) declare(ch *amqp091.Channel, logger logging.Logger) err
 
 func (p *Publisher[T]) swapChannel(connection *amqp091.Connection, cfg Config[T]) (chan *amqp091.Error, error) {
 	p.gettingCh.Store(true)
-	p.ready.Lock()
-	defer p.ready.Unlock()
-
 	chOrigin, notifyClose, err := newChannel(connection, cfg.exchange, cfg.logger)
 
 	if err != nil {
 		return nil, err
 	}
 
-	p.ch = chOrigin
+	p.ch.Store(chOrigin)
 	p.gettingCh.Store(false)
 	return notifyClose, nil
 }
@@ -101,10 +97,9 @@ func (p *Publisher[T]) onConnectionReady(cfg Config[T]) connection.OnConnectionR
 				select {
 				case <-ctx.Done():
 					p.closing.Store(true)
-					p.ready.Lock()
-					defer p.ready.Unlock()
-					if !p.ch.IsClosed() {
-						if err := p.ch.Close(); err != nil {
+					ch := p.ch.Load()
+					if !ch.IsClosed() {
+						if err := ch.Close(); err != nil {
 							cfg.logger.Error("Failed to close channel: %v", err)
 						}
 					}
@@ -185,7 +180,7 @@ func New[T any](exchangeName string, options ...Option[T]) (*Publisher[T], error
 				panic(err)
 			}
 
-			fmt.Fprintf(os.Stderr, "[ERROR]: An error has occurred! %v\n", err)
+			_, _ = fmt.Fprintf(os.Stderr, "[ERROR]: An error has occurred! %v\n", err)
 		},
 	}
 
@@ -231,16 +226,16 @@ func (p *Publisher[T]) Publish(ctx context.Context, msg T, config ...PublishConf
 		return ErrChannelNotReady
 	}
 
-	p.ready.RLock()
-
-	defer p.ready.RUnlock()
+	//p.ready.RLock()
+	//
+	//defer p.ready.RUnlock()
 
 	body, err := p.serializer.Marshal(msg)
 	if err != nil {
 		return err
 	}
 
-	return p.ch.PublishWithContext(
+	return (*p.ch.Load()).PublishWithContext(
 		ctx,
 		p.exchangeName,
 		p.routingKey,
@@ -257,11 +252,7 @@ func (p *Publisher[T]) Publish(ctx context.Context, msg T, config ...PublishConf
 
 func (p *Publisher[T]) Close() error {
 	p.closing.Store(true)
-	p.ready.Lock()
-	defer p.ready.Unlock()
-
 	p.cancel()
 	p.wg.Wait()
-	p.ch = nil
 	return p.conn.Close()
 }

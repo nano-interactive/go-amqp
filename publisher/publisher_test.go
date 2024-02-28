@@ -91,16 +91,16 @@ func TestPublisherPublish(t *testing.T) {
 
 	t.Run("Basic", func(t *testing.T) {
 		mappings := amqp_testing.NewMappings(t).
-			AddMapping("test_exchange", "test_queue")
+			AddMapping("test_exchange_basic", "test_queue_basic")
 
-		pub, err := publisher.New[Msg](mappings.Exchange("test_exchange"))
+		pub, err := publisher.New[Msg](mappings.Exchange("test_exchange_basic"))
 		assert.NoError(err)
 		assert.NotNil(pub)
 
 		assert.NoError(pub.Publish(context.Background(), Msg{Name: "test"}))
 		assert.NoError(pub.Close())
 
-		messages := amqp_testing.ConsumeAMQPMessages[Msg](t, mappings.Queue("test_queue"), connection.DefaultConfig, 200*time.Millisecond)
+		messages := amqp_testing.ConsumeAMQPMessages[Msg](t, mappings.Queue("test_queue_basic"), connection.DefaultConfig, 200*time.Millisecond)
 
 		assert.Len(messages, 1)
 		assert.Equal("test", messages[0].Name)
@@ -108,22 +108,22 @@ func TestPublisherPublish(t *testing.T) {
 
 	t.Run("WithSerializer", func(t *testing.T) {
 		mappings := amqp_testing.NewMappings(t).
-			AddMapping("test_exchange", "test_queue")
+			AddMapping("test_exchange_serializer", "test_queue_serializer")
 
-		serializer := &MockSerializer{}
+		mockSerializer := &MockSerializer{}
 
 		pub, err := publisher.New[Msg](
-			mappings.Exchange("test_exchange"),
-			publisher.WithSerializer[Msg](serializer),
+			mappings.Exchange("test_exchange_serializer"),
+			publisher.WithSerializer[Msg](mockSerializer),
 		)
 		assert.NoError(err)
 		assert.NotNil(pub)
 
-		serializer.On("Marshal", Msg{Name: "test"}).
+		mockSerializer.On("Marshal", Msg{Name: "test"}).
 			Once().
 			Return([]byte("\"test\""), nil)
 
-		serializer.On("GetContentType").
+		mockSerializer.On("GetContentType").
 			Once().
 			Return("application/json")
 
@@ -132,32 +132,32 @@ func TestPublisherPublish(t *testing.T) {
 
 		messages := amqp_testing.ConsumeAMQPMessages[string](
 			t,
-			mappings.Queue("test_queue"),
+			mappings.Queue("test_queue_serializer"),
 			connection.DefaultConfig,
 			200*time.Millisecond,
 		)
 
 		assert.Len(messages, 1)
 		assert.Equal("test", messages[0])
-		serializer.AssertExpectations(t)
+		mockSerializer.AssertExpectations(t)
 	})
 
 	t.Run("WithSerializerFails", func(t *testing.T) {
 		mappings := amqp_testing.NewMappings(t).
-			AddMapping("test_exchange", "test_queue")
+			AddMapping("test_exchange_serializer_fails", "test_queue_serializer_fails")
 
-		serializer := &MockSerializer{}
+		mockSerializer := &MockSerializer{}
 
 		pub, err := publisher.New[Msg](
-			mappings.Exchange("test_exchange"),
-			publisher.WithSerializer[Msg](serializer),
+			mappings.Exchange("test_exchange_serializer_fails"),
+			publisher.WithSerializer[Msg](mockSerializer),
 		)
 		assert.NoError(err)
 		assert.NotNil(pub)
 
 		expectedErr := errors.New("failed to serialize")
 
-		serializer.On("Marshal", Msg{Name: "test"}).
+		mockSerializer.On("Marshal", Msg{Name: "test"}).
 			Once().
 			Return([]byte{}, expectedErr)
 
@@ -166,14 +166,14 @@ func TestPublisherPublish(t *testing.T) {
 
 		messages := amqp_testing.ConsumeAMQPMessages[string](
 			t,
-			mappings.Queue("test_queue"),
+			mappings.Queue("test_queue_serializer_fails"),
 			connection.DefaultConfig,
 			200*time.Millisecond,
 		)
 
 		assert.Len(messages, 0)
-		serializer.AssertNotCalled(t, "GetContentType")
-		serializer.AssertExpectations(t)
+		mockSerializer.AssertNotCalled(t, "GetContentType")
+		mockSerializer.AssertExpectations(t)
 	})
 }
 
@@ -183,9 +183,9 @@ func TestPublisherClose(t *testing.T) {
 
 	t.Run("Basic", func(t *testing.T) {
 		mappings := amqp_testing.NewMappings(t).
-			AddMapping("test_exchange", "test_queue")
+			AddMapping("test_exchange_close", "test_queue_close")
 
-		pub, err := publisher.New[Msg](mappings.Exchange("test_exchange"))
+		pub, err := publisher.New[Msg](mappings.Exchange("test_exchange_close"))
 		assert.NoError(err)
 		assert.NotNil(pub)
 
@@ -194,9 +194,9 @@ func TestPublisherClose(t *testing.T) {
 
 	t.Run("Call_To_Publish_After_Close", func(t *testing.T) {
 		mappings := amqp_testing.NewMappings(t).
-			AddMapping("test_exchange", "test_queue")
+			AddMapping("test_exchange_after_close", "test_queue_after_close")
 
-		pub, err := publisher.New[Msg](mappings.Exchange("test_exchange"))
+		pub, err := publisher.New[Msg](mappings.Exchange("test_exchange_after_close"))
 		assert.NoError(err)
 		assert.NotNil(pub)
 
@@ -206,9 +206,9 @@ func TestPublisherClose(t *testing.T) {
 
 	t.Run("Multiple_Close_Calling", func(t *testing.T) {
 		mappings := amqp_testing.NewMappings(t).
-			AddMapping("test_exchange", "test_queue")
+			AddMapping("test_exchange_multiple_close_call", "test_queue_multiple_close_call")
 
-		pub, err := publisher.New[Msg](mappings.Exchange("test_exchange"))
+		pub, err := publisher.New[Msg](mappings.Exchange("test_exchange_multiple_close_call"))
 		assert.NoError(err)
 		assert.NotNil(pub)
 
