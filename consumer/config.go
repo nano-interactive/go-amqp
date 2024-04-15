@@ -5,9 +5,8 @@ import (
 
 	"github.com/rabbitmq/amqp091-go"
 
-	"github.com/nano-interactive/go-amqp/v2/connection"
-	"github.com/nano-interactive/go-amqp/v2/logging"
-	"github.com/nano-interactive/go-amqp/v2/serializer"
+	"github.com/nano-interactive/go-amqp/v3/connection"
+	"github.com/nano-interactive/go-amqp/v3/serializer"
 )
 
 type ExchangeBinding struct {
@@ -26,7 +25,6 @@ type QueueDeclare struct {
 
 type Config[T any] struct {
 	ctx               context.Context
-	logger            logging.Logger
 	serializer        serializer.Serializer[T]
 	onError           connection.OnErrorFunc
 	onMessageError    func(context.Context, *amqp091.Delivery, error)
@@ -76,12 +74,6 @@ func WithQueueConfig[T any](cfg QueueConfig) Option[T] {
 		}
 
 		c.queueConfig = cfg
-	}
-}
-
-func WithLogger[T any](logger logging.Logger) Option[T] {
-	return func(c *Config[T]) {
-		c.logger = logger
 	}
 }
 

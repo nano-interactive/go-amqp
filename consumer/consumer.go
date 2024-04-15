@@ -3,14 +3,12 @@ package consumer
 import (
 	"context"
 	"errors"
-	"fmt"
+	"golang.org/x/sync/semaphore"
 	"io"
-	"os"
 	"reflect"
 
-	"github.com/nano-interactive/go-amqp/v2/connection"
-	"github.com/nano-interactive/go-amqp/v2/logging"
-	"github.com/nano-interactive/go-amqp/v2/serializer"
+	"github.com/nano-interactive/go-amqp/v3/connection"
+	"github.com/nano-interactive/go-amqp/v3/serializer"
 )
 
 var (
@@ -22,7 +20,10 @@ type (
 	Message interface{}
 
 	Consumer[T Message] struct {
-		queues *queue
+		watcher      *semaphore.Weighted
+		cfg          *Config[T]
+		queueDeclare *QueueDeclare
+		handler      RawHandler
 	}
 )
 
@@ -40,14 +41,11 @@ func NewRaw[T Message](handler RawHandler, queueDeclare QueueDeclare, options ..
 		},
 		retryCount: 1,
 		serializer: serializer.JsonSerializer[T]{},
-		logger:     logging.EmptyLogger{},
 		ctx:        context.Background(),
 		onError: func(err error) {
 			if errors.Is(err, connection.ErrRetriesExhausted) {
 				panic(err)
 			}
-
-			fmt.Fprintf(os.Stderr, "[ERROR]: An error has occurred! %v\n", err)
 		},
 		connectionOptions: connection.DefaultConfig,
 		onMessageError:    nil,
@@ -60,20 +58,18 @@ func NewRaw[T Message](handler RawHandler, queueDeclare QueueDeclare, options ..
 	}
 
 	if queueDeclare.QueueName == "" {
-		return Consumer[T]{}, errors.New("queue name is required... Please call WithQueueName(queueName) option function")
+		return Consumer[T]{}, errors.New("q name is required... Please call WithQueueName(queueName) option function")
 	}
 
 	if cfg.onMessageError == nil {
 		panic("onMessageError is required")
 	}
 
-	queue, err := newQueue(cfg.ctx, cfg, queueDeclare, handler)
-	if err != nil {
-		return Consumer[T]{}, err
-	}
-
 	return Consumer[T]{
-		queues: queue,
+		watcher:      semaphore.NewWeighted(int64(cfg.queueConfig.Workers)),
+		cfg:          &cfg,
+		queueDeclare: &queueDeclare,
+		handler:      handler,
 	}, nil
 }
 
@@ -107,7 +103,7 @@ func NewFunc[T Message](h HandlerFunc[T], queueDeclare QueueDeclare, options ...
 	if cfg.retryCount > 1 {
 		rawHandler = retryHandler[T]{
 			handler:    privHandler,
-			retryCount: uint32(cfg.retryCount),
+			retryCount: cfg.retryCount,
 		}
 	} else {
 		rawHandler = privHandler
@@ -142,7 +138,7 @@ func New[T Message](h Handler[T], queueDeclare QueueDeclare, options ...Option[T
 	if cfg.retryCount > 1 {
 		rawHandler = retryHandler[T]{
 			handler:    privHandler,
-			retryCount: uint32(cfg.retryCount),
+			retryCount: cfg.retryCount,
 		}
 	} else {
 		rawHandler = privHandler
@@ -152,9 +148,5 @@ func New[T Message](h Handler[T], queueDeclare QueueDeclare, options ...Option[T
 }
 
 func (c Consumer[T]) Close() error {
-	if err := c.queues.Close(); err != nil {
-		return err
-	}
-
-	return nil
+	return c.watcher.Acquire(context.Background(), int64(c.cfg.queueConfig.Workers))
 }

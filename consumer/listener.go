@@ -4,8 +4,6 @@ import (
 	"context"
 
 	"github.com/rabbitmq/amqp091-go"
-
-	"github.com/nano-interactive/go-amqp/v2/logging"
 )
 
 type listener struct {
@@ -35,14 +33,14 @@ func newListener(
 	}
 }
 
-func (l *listener) Listen(ctx context.Context, logger logging.Logger) (shouldRestart bool, err error) {
+func (l *listener) Listen(ctx context.Context) error {
 	channel, err := l.conn.Channel()
 	if err != nil {
-		return true, err
+		return err
 	}
 
 	if err = channel.Qos(l.cfg.PrefetchCount, 0, false); err != nil {
-		return true, err
+		return err
 	}
 
 	dataStream, err := channel.Consume(
@@ -54,9 +52,9 @@ func (l *listener) Listen(ctx context.Context, logger logging.Logger) (shouldRes
 		false,
 		nil,
 	)
+
 	if err != nil {
-		logger.Error("Failed to consume queue(%s): %v", l.queueName, err)
-		return true, err
+		return err
 	}
 
 	defer func(channel *amqp091.Channel) {
@@ -69,7 +67,7 @@ func (l *listener) Listen(ctx context.Context, logger logging.Logger) (shouldRes
 		select {
 		case delivery, more := <-dataStream:
 			if !more {
-				return true, nil
+				return nil
 			}
 
 			if err := l.handler.Handle(ctx, &delivery); err != nil {
@@ -77,7 +75,7 @@ func (l *listener) Listen(ctx context.Context, logger logging.Logger) (shouldRes
 				continue
 			}
 		case <-ctx.Done():
-			return false, nil
+			return nil
 		}
 	}
 }

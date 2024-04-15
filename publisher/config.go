@@ -3,9 +3,9 @@ package publisher
 import (
 	"context"
 
-	"github.com/nano-interactive/go-amqp/v2/connection"
-	"github.com/nano-interactive/go-amqp/v2/logging"
-	"github.com/nano-interactive/go-amqp/v2/serializer"
+	"github.com/nano-interactive/go-amqp/v3/connection"
+	"github.com/nano-interactive/go-amqp/v3/logging"
+	"github.com/nano-interactive/go-amqp/v3/serializer"
 )
 
 type (

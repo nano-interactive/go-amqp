@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/nano-interactive/go-amqp/v2/connection"
-	"github.com/nano-interactive/go-amqp/v2/publisher"
-	"github.com/nano-interactive/go-amqp/v2/serializer"
-	amqp_testing "github.com/nano-interactive/go-amqp/v2/testing"
+	"github.com/nano-interactive/go-amqp/v3/connection"
+	"github.com/nano-interactive/go-amqp/v3/publisher"
+	"github.com/nano-interactive/go-amqp/v3/serializer"
+	amqp_testing "github.com/nano-interactive/go-amqp/v3/testing"
 )
 
 type Msg struct {

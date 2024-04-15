@@ -2,12 +2,9 @@ package consumer
 
 import (
 	"context"
-	"sync"
 
+	"github.com/nano-interactive/go-amqp/v3/connection"
 	"github.com/rabbitmq/amqp091-go"
-
-	"github.com/nano-interactive/go-amqp/v2/connection"
-	"github.com/nano-interactive/go-amqp/v2/logging"
 )
 
 type (
@@ -15,62 +12,54 @@ type (
 		Workers       int
 		PrefetchCount int
 	}
-
-	queue struct {
-		logger     logging.Logger
-		connection *connection.Connection
-	}
 )
 
-func newQueue[T any](base context.Context, cfg Config[T], queueDeclare QueueDeclare, handler RawHandler) (*queue, error) {
-	ctx, cancel := context.WithCancel(base)
+//func newQueue[T any]() (queue, error) {
+//
+//	if err != nil {
+//		return queue{}, err
+//	}
+//
+//	return queue{
+//		connection: conn,
+//		watcher:    watcher,
+//		workers:    int64(cfg.queueConfig.Workers),
+//	}, nil
+//}
 
-	var wg sync.WaitGroup
+func (c *Consumer[T]) Start(base context.Context) error {
+	_, cancel := context.WithCancel(base)
 
-	conn, err := connection.New(base, cfg.connectionOptions, connection.Events{
-		OnBeforeConnectionReady: func(_ context.Context) error {
+	conn, err := connection.New(base, c.cfg.connectionOptions, connection.Events{
+		OnBeforeConnectionReady: func(ctx context.Context) error {
 			cancel()
-			wg.Wait()
-			ctx, cancel = context.WithCancel(base)
-			return nil
+			_, cancel = context.WithCancel(ctx)
+			return c.watcher.Acquire(base, int64(c.cfg.queueConfig.Workers))
 		},
 
-		OnConnectionReady: func(_ context.Context, connection *amqp091.Connection) error {
-			watchDog := make(chan int, cfg.queueConfig.Workers)
-			for i := 0; i < cfg.queueConfig.Workers; i++ {
-				watchDog <- i + 1
-			}
+		OnConnectionReady: func(ctx context.Context, connection *amqp091.Connection) error {
+			fn, err := c.watchdog(ctx, connection)
 
-			wg.Add(1)
-			watcher, err := watchdog(
-				ctx,
-				connection,
-				watchDog,
-				cfg.onError,
-				cfg,
-				queueDeclare,
-				handler,
-			)
 			if err != nil {
 				return err
 			}
 
-			go watcher(&wg)
+			go fn()
 
 			return nil
 		},
-		OnError: cfg.onError,
+		OnError: c.cfg.onError,
 	})
+
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return &queue{
-		logger:     cfg.logger,
-		connection: conn,
-	}, nil
+	defer conn.Close()
+
+	return nil
 }
 
-func (q *queue) Close() error {
-	return q.connection.Close()
-}
+//func (q *queue) Close() error {
+
+//}

@@ -12,9 +12,9 @@ import (
 
 	"github.com/rabbitmq/amqp091-go"
 
-	"github.com/nano-interactive/go-amqp/v2/connection"
-	"github.com/nano-interactive/go-amqp/v2/consumer"
-	"github.com/nano-interactive/go-amqp/v2/publisher"
+	"github.com/nano-interactive/go-amqp/v3/connection"
+	"github.com/nano-interactive/go-amqp/v3/consumer"
+	"github.com/nano-interactive/go-amqp/v3/publisher"
 )
 
 type Message struct {
@@ -97,7 +97,7 @@ func ExampleConsumerWithSignal() {
 	c, err := consumer.NewFunc(handler,
 		consumer.QueueDeclare{QueueName: "testing_queue"},
 		consumer.WithOnMessageError[Message](func(ctx context.Context, d *amqp091.Delivery, err error) {
-			fmt.Fprintf(os.Stderr, "[ERROR] Message error: %s\n", err)
+			_, _ = fmt.Fprintf(os.Stderr, "[ERROR] Message error: %s\n", err)
 		}),
 		consumer.WithContext[Message](ctx),
 		consumer.WithConnectionOptions[Message](connection.Config{
@@ -138,7 +138,7 @@ func ExampleConsumerWithRawHandler() {
 	c, err := consumer.NewRaw(MyRawHandler{},
 		consumer.QueueDeclare{QueueName: "testing_queue"},
 		consumer.WithOnMessageError[Message](func(ctx context.Context, d *amqp091.Delivery, err error) {
-			fmt.Fprintf(os.Stderr, "[ERROR] Message error: %s\n", err)
+			_, _ = fmt.Fprintf(os.Stderr, "[ERROR] Message error: %s\n", err)
 		}),
 		consumer.WithConnectionOptions[Message](connection.Config{
 			Host:           "127.0.0.1",

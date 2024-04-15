@@ -19,7 +19,7 @@ This makes those two very easy to `Mock` for unit testing, as `Pub[T]` is an int
 To install the library just use `go get`
 
 ```sh
-go get github.com/nano-interactive/go-amqp/v2
+go get github.com/nano-interactive/go-amqp/v3
 
 ```
 

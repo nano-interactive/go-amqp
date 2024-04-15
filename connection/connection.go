@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -23,7 +25,7 @@ var DefaultConfig = Config{
 	ReconnectInterval: 1 * time.Second,
 }
 
-var ErrRetriesExhausted = errors.New("number of retries to acquire conenction exhausted")
+var ErrRetriesExhausted = errors.New("number of retries to acquire connection exhausted")
 
 type (
 	Connection struct {
@@ -45,6 +47,7 @@ type (
 		Port              int           `json:"port,omitempty" mapstructure:"port" yaml:"port"`
 		ReconnectRetry    int           `json:"reconnect_retry,omitempty" mapstructure:"reconnect_retry" yaml:"reconnect_retry"`
 		Channels          int           `json:"channels,omitempty" mapstructure:"channels" yaml:"channels"`
+		FrameSize         int           `json:"frame_size,omitempty" mapstructure:"frame_size" yaml:"frame_size"`
 		ReconnectInterval time.Duration `json:"reconnect_interval,omitempty" mapstructure:"reconnect_interval" yaml:"reconnect_interval"`
 	}
 
@@ -60,7 +63,7 @@ func New(ctx context.Context, config Config, events Events) (*Connection, error)
 		return nil, fmt.Errorf("OnConnectionReady is required")
 	}
 
-	newCtx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(ctx)
 
 	c := &Connection{
 		Config:                  &config,
@@ -75,22 +78,34 @@ func New(ctx context.Context, config Config, events Events) (*Connection, error)
 		c.connectionDispose()
 	})
 
+	return c.reconnect(ctx, &config)
+}
+
+func (c *Connection) reconnect(ctx context.Context, config *Config) (*Connection, error) {
 	connect := c.connect()
 
-	if err := connect(newCtx); err == nil {
+	if err := connect(ctx); err == nil {
 		return c, nil
 	}
 
 	var err error
-	for i := 0; i < config.ReconnectRetry; i++ {
-		time.Sleep(config.ReconnectInterval)
+	timer := time.NewTimer(config.ReconnectInterval)
+	defer timer.Stop()
 
-		if err = connect(newCtx); err == nil {
-			return c, nil
+	for i := 0; i < config.ReconnectRetry; i++ {
+		select {
+		case <-timer.C:
+			if err = connect(ctx); err == nil {
+				return c, nil
+			}
+
+			timer.Reset(config.ReconnectInterval)
+		case <-ctx.Done():
+			return c, ctx.Err()
 		}
 	}
 
-	return nil, err
+	return c, err
 }
 
 func (c *Connection) hasConnectionClosed(err error) bool {
@@ -106,8 +121,9 @@ func (c *Connection) IsClosed() bool {
 	return conn != nil && conn.IsClosed()
 }
 
-func (c *Connection) handleReconnect(ctx context.Context, connection *amqp091.Connection, connect func(ctx context.Context) error) {
+func (c *Connection) handleReconnect(ctx context.Context, connection *amqp091.Connection) {
 	notifyClose := connection.NotifyClose(make(chan *amqp091.Error))
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -123,16 +139,7 @@ func (c *Connection) handleReconnect(ctx context.Context, connection *amqp091.Co
 
 			c.connectionDispose()
 
-			var i int
-
-			for i = 0; i < c.ReconnectRetry; i++ {
-				if err := connect(ctx); err == nil {
-					return
-				}
-			}
-
-			if i >= c.ReconnectRetry {
-				c.onError(ErrRetriesExhausted)
+			if _, err := c.reconnect(ctx, c.Config); err != nil {
 				return
 			}
 		}
@@ -141,23 +148,27 @@ func (c *Connection) handleReconnect(ctx context.Context, connection *amqp091.Co
 
 func (c *Connection) connect() func(ctx context.Context) error {
 	connectionURI := fmt.Sprintf(
-		"amqp://%s:%s@%s:%d",
+		"amqp://%s:%s@%s",
 		c.User,
 		c.Password,
-		c.Host,
-		c.Port,
+		net.JoinHostPort(c.Host, strconv.FormatInt(int64(c.Port), 10)),
 	)
 
 	properties := amqp091.NewConnectionProperties()
 	properties.SetClientConnectionName(c.ConnectionName)
+	if err := properties.Validate(); err != nil {
+		panic("Invalid connection properties: " + err.Error())
+	}
 
 	return func(ctx context.Context) error {
 		c.connectionDispose()
 
 		config := amqp091.Config{
+			SASL:       nil,
 			Vhost:      c.Vhost,
 			ChannelMax: c.Channels,
-			Heartbeat:  1 * time.Second,
+			FrameSize:  c.FrameSize,
+			Heartbeat:  3 * time.Second,
 			Properties: properties,
 			Dial:       amqp091.DefaultDial(c.ReconnectInterval),
 		}
@@ -179,7 +190,7 @@ func (c *Connection) connect() func(ctx context.Context) error {
 
 		c.conn.Store(conn)
 
-		go c.handleReconnect(ctx, conn, c.connect())
+		go c.handleReconnect(ctx, conn)
 
 		if err = c.onConnectionReady(ctx, conn); err != nil {
 			if c.onError != nil {

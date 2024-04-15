@@ -6,7 +6,7 @@ import (
 
 	"github.com/rabbitmq/amqp091-go"
 
-	"github.com/nano-interactive/go-amqp/v2/serializer"
+	"github.com/nano-interactive/go-amqp/v3/serializer"
 )
 
 var ErrNoRetry = errors.New("no retry")
