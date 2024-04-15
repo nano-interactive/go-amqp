@@ -3,21 +3,11 @@ run:
   timeout: 5m
   issues-exit-code: 1
   tests: true
-
-skip-dirs:
-  - docs/
-  - nanodocker/
-  - cli/migrations
-
-skip-files:
-  - "*_gen\\.go$"
-
-modules-download-mode: mod
-allow-parallel-runners: true
-go: '1.21'
+  go: '1.22'
+  modules-download-mode: mod
+  allow-parallel-runners: true
 
 output:
-  format: colored-line-number
   print-issued-lines: true
   print-linter-name: true
   uniq-by-line: true
@@ -41,7 +31,6 @@ linters:
     - gofumpt
     - ginkgolinter
     - gocheckcompilerdirectives
-    - gochecknoglobals
     - gocognit
     - goconst
     - gocritic
@@ -96,4 +85,4 @@ linters:
     - whitespace
     - zerologlint
     - prealloc
-    # - perfsprint
+    - perfsprint

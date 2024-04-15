@@ -20,35 +20,38 @@ jobs:
           RABBITMQ_DEFAULT_PASS: guest
         ports:
           - '5672:5672'
+
     strategy:
       matrix:
-        os: [ubuntu-latest]
-        go: [ '1.21', '1.22' ]
+        os: ['ubuntu-latest']
+        go: [ '1.22' ]
+
     runs-on: ${{ matrix.os }}
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/cache@v4
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-tests-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-tests-${{ hashFiles('**/go.sum') }}
       - uses: actions/setup-go@v4
         with:
           go-version: ${{ matrix.go }}
-      - uses: actions/cache@v3
+      - name: Install Task
+        uses: arduino/setup-task@v1
         with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
-      - name: Set up gotestfmt
-        run: go install github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt@latest
-      - name: Test ${{ matrix.go }}
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run tests
         run: |
-          go test -race -covermode=atomic -coverprofile=coverage.txt -timeout 5m -json -v ./... 2>&1 | gotestfmt
-      - uses: codecov/codecov-action@v1
+          go install github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt@latest
+          task test
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4.0.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          file: ./coverage.txt
-          flags: tests
-          name: codecov-umbrella
-          fail_ci_if_error: true
-          verbose: true
+          slug: nano-interactive/go-amqp

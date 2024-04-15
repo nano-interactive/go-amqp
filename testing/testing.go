@@ -109,20 +109,20 @@ type QueueExchangeMapping struct {
 	mapping map[string][]string
 }
 
-func NewMappings(t testing.TB, config ...connection.Config) *QueueExchangeMapping {
-	t.Helper()
+func NewMappings(tb testing.TB, config ...connection.Config) *QueueExchangeMapping {
+	tb.Helper()
 	cfg := connection.DefaultConfig
 
 	if len(config) > 0 {
 		cfg = config[0]
 	}
 
-	_, channel := GetAMQPConnection(t, cfg)
+	_, channel := GetAMQPConnection(tb, cfg)
 
 	return &QueueExchangeMapping{
 		mapping: make(map[string][]string),
 		channel: channel,
-		t:       t,
+		t:       tb,
 	}
 }
 

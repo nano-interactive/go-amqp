@@ -23,9 +23,10 @@ type Message struct {
 
 var cnt atomic.Uint64
 
-func handler(ctx context.Context, msg Message) error {
+func handler(_ context.Context, msg Message) error {
 	defer cnt.Add(1)
-	fmt.Printf("[INFO] Message received: %d %s\n", cnt.Load(), msg.Name)
+	//nolint:forbidigo
+	_, _ = fmt.Printf("[INFO] Message received: %d %s\n", cnt.Load(), msg.Name)
 	return nil
 }
 
@@ -33,7 +34,7 @@ func ExampleConsumer() {
 	c, err := consumer.NewFunc(handler,
 		consumer.QueueDeclare{QueueName: "testing_queue"},
 		consumer.WithOnMessageError[Message](func(ctx context.Context, d *amqp091.Delivery, err error) {
-			fmt.Fprintf(os.Stderr, "[ERROR] Message error: %s\n", err)
+			_, _ = fmt.Fprintf(os.Stderr, "[ERROR] Message error: %s\n", err)
 		}),
 		consumer.WithConnectionOptions[Message](connection.Config{
 			Host:           "127.0.0.1",
@@ -45,6 +46,12 @@ func ExampleConsumer() {
 	if err != nil {
 		panic(err)
 	}
+
+	go func() {
+		if err := c.Start(context.Background()); err != nil {
+			panic(err)
+		}
+	}()
 
 	fmt.Println("[INFO] Consumer started")
 	time.Sleep(100 * time.Second)
@@ -58,6 +65,7 @@ type MyHandler struct{}
 
 func (h MyHandler) Handle(ctx context.Context, msg Message) error {
 	defer cnt.Add(1)
+	//nolint:forbidigo
 	fmt.Printf("[INFO] Message received: %d %s\n", cnt.Load(), msg.Name)
 	return nil
 }
@@ -78,6 +86,12 @@ func ExampleConsumerWithHandler() {
 	if err != nil {
 		panic(err)
 	}
+
+	go func() {
+		if err := c.Start(context.Background()); err != nil {
+			panic(err)
+		}
+	}()
 
 	fmt.Println("[INFO] Consumer started")
 	time.Sleep(100 * time.Second)
@@ -111,10 +125,16 @@ func ExampleConsumerWithSignal() {
 		panic(err)
 	}
 
+	go func() {
+		if err := c.Start(ctx); err != nil {
+			panic(err)
+		}
+	}()
+
 	fmt.Println("[INFO] Consumer started")
 	<-sig
 	cancel()
-	fmt.Println("[INFO] Signal Recieved")
+	fmt.Println("[INFO] Signal Received")
 
 	if err := c.Close(); err != nil {
 		panic(err)
@@ -129,12 +149,13 @@ func (h MyRawHandler) Handle(ctx context.Context, d *amqp091.Delivery) error {
 
 	_ = json.Unmarshal(d.Body, &msg)
 
+	//nolint:forbidigo
 	fmt.Printf("[INFO] Message received: %d %s\n", cnt.Load(), msg.Name)
 
 	return d.Ack(false)
 }
 
-func ExampleConsumerWithRawHandler() {
+func Example_ConsumerWithRawHandler() {
 	c, err := consumer.NewRaw(MyRawHandler{},
 		consumer.QueueDeclare{QueueName: "testing_queue"},
 		consumer.WithOnMessageError[Message](func(ctx context.Context, d *amqp091.Delivery, err error) {
@@ -150,6 +171,12 @@ func ExampleConsumerWithRawHandler() {
 	if err != nil {
 		panic(err)
 	}
+
+	go func() {
+		if err := c.Start(context.Background()); err != nil {
+			panic(err)
+		}
+	}()
 
 	fmt.Println("[INFO] Consumer started")
 	time.Sleep(100 * time.Second)

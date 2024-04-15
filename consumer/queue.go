@@ -14,19 +14,6 @@ type (
 	}
 )
 
-//func newQueue[T any]() (queue, error) {
-//
-//	if err != nil {
-//		return queue{}, err
-//	}
-//
-//	return queue{
-//		connection: conn,
-//		watcher:    watcher,
-//		workers:    int64(cfg.queueConfig.Workers),
-//	}, nil
-//}
-
 func (c *Consumer[T]) Start(base context.Context) error {
 	_, cancel := context.WithCancel(base)
 
@@ -59,7 +46,3 @@ func (c *Consumer[T]) Start(base context.Context) error {
 
 	return nil
 }
-
-//func (q *queue) Close() error {
-
-//}
