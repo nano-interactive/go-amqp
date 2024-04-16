@@ -1,68 +1,89 @@
-# 2.0.7
+# Changelog
 
-## Features
+## [v3.0.0-alfa1](https://github.com/nano-interactive/go-amqp/releases/tag/v3.0.0-alfa1) (2024-04-16)
 
-* Connection IsClosed method added
+[Full Changelog](https://github.com/nano-interactive/go-amqp/compare/v2.1.1...v3.0.0-alfa1)
 
-## Bufix
+## [v2.1.1](https://github.com/nano-interactive/go-amqp/releases/tag/v3.0.0-alfa1) (2024-02-28)
 
-* Publisher deadlock on channel close
+[Full Changelog](https://github.com/nano-interactive/go-amqp/compare/v2.1.0...v2.1.1)
 
-# 2.0.4
+## [v2.1.0](https://github.com/nano-interactive/go-amqp/releases/tag/v3.0.0-alfa1) (2024-02-27)
+
+[Full Changelog](https://github.com/nano-interactive/go-amqp/compare/v2.0.6...v2.1.0)
+
+## [v2.0.6](https://github.com/nano-interactive/go-amqp/releases/tag/v3.0.0-alfa1) (2023-10-02)
+
+[Full Changelog](https://github.com/nano-interactive/go-amqp/compare/v2.0.5...v2.0.6)
+
+**Merged pull requests:**
+
+- added log [\#2](https://github.com/nano-interactive/go-amqp/pull/2) ([p3ps1-man](https://github.com/p3ps1-man))
+
+## [v2.0.5](https://github.com/nano-interactive/go-amqp/releases/tag/v3.0.0-alfa1) (2023-07-17)
+
+[Full Changelog](https://github.com/nano-interactive/go-amqp/compare/v2.0.4...v2.0.5)
+
+## [v2.0.4](https://github.com/nano-interactive/go-amqp/releases/tag/v3.0.0-alfa1) (2023-06-27)
+
+[Full Changelog](https://github.com/nano-interactive/go-amqp/compare/v2.0.3...v2.0.4)
+
+## [v2.0.3](https://github.com/nano-interactive/go-amqp/releases/tag/v3.0.0-alfa1) (2023-06-27)
+
+[Full Changelog](https://github.com/nano-interactive/go-amqp/compare/v2.0.2...v2.0.3)
+
+## [v2.0.2](https://github.com/nano-interactive/go-amqp/releases/tag/v3.0.0-alfa1) (2023-06-27)
+
+[Full Changelog](https://github.com/nano-interactive/go-amqp/compare/v2.0.0...v2.0.2)
+
+## [v2.0.0](https://github.com/nano-interactive/go-amqp/releases/tag/v3.0.0-alfa1) (2023-06-27)
+
+[Full Changelog](https://github.com/nano-interactive/go-amqp/compare/v2.0.1...v2.0.0)
+
+## [v2.0.1](https://github.com/nano-interactive/go-amqp/releases/tag/v3.0.0-alfa1) (2023-06-27)
+
+[Full Changelog](https://github.com/nano-interactive/go-amqp/compare/v1.0.1...v2.0.1)
+
+## [v1.0.1](https://github.com/nano-interactive/go-amqp/releases/tag/v3.0.0-alfa1) (2023-06-22)
+
+[Full Changelog](https://github.com/nano-interactive/go-amqp/compare/v1.0.0...v1.0.1)
+
+## [v1.0.0](https://github.com/nano-interactive/go-amqp/releases/tag/v3.0.0-alfa1) (2023-06-22)
+
+[Full Changelog](https://github.com/nano-interactive/go-amqp/compare/v0.3.3...v1.0.0)
+
+**Implemented enhancements:**
+
+- Testing utils added [\#1](https://github.com/nano-interactive/go-amqp/pull/1) ([CerealKiller97](https://github.com/CerealKiller97))
+
+## [v0.3.3](https://github.com/nano-interactive/go-amqp/releases/tag/v3.0.0-alfa1) (2023-06-15)
+
+[Full Changelog](https://github.com/nano-interactive/go-amqp/compare/v0.3.2...v0.3.3)
+
+## [v0.3.2](https://github.com/nano-interactive/go-amqp/releases/tag/v3.0.0-alfa1) (2023-06-13)
+
+[Full Changelog](https://github.com/nano-interactive/go-amqp/compare/v0.3.1...v0.3.2)
+
+## [v0.3.1](https://github.com/nano-interactive/go-amqp/releases/tag/v3.0.0-alfa1) (2023-06-13)
+
+[Full Changelog](https://github.com/nano-interactive/go-amqp/compare/v0.3.0...v0.3.1)
+
+## [v0.3.0](https://github.com/nano-interactive/go-amqp/releases/tag/v3.0.0-alfa1) (2023-06-13)
+
+[Full Changelog](https://github.com/nano-interactive/go-amqp/compare/v0.2.1...v0.3.0)
+
+## [v0.2.1](https://github.com/nano-interactive/go-amqp/releases/tag/v3.0.0-alfa1) (2023-02-08)
+
+[Full Changelog](https://github.com/nano-interactive/go-amqp/compare/v0.2.0...v0.2.1)
+
+## [v0.2.0](https://github.com/nano-interactive/go-amqp/releases/tag/v3.0.0-alfa1) (2022-12-16)
+
+[Full Changelog](https://github.com/nano-interactive/go-amqp/compare/v0.1.0...v0.2.0)
+
+## [v0.1.0](https://github.com/nano-interactive/go-amqp/releases/tag/v3.0.0-alfa1) (2022-12-05)
+
+[Full Changelog](https://github.com/nano-interactive/go-amqp/compare/7094ec2611d2517bddc288710900eeb41a45c8e8...v0.1.0)
 
 
-## Bufix
 
-* WatchDog leak on reconnect
-* Sleep after initial connection fail
-
-# 2.0.3
-## Bufix
-
-* Testing - no auto delete queues and exchanges
-
-# 2.0.3
-## Bufix
-
-* Fixing issue with testing publish
-
-# 2.0.2
-## Bufix
-
-* Fix deref in type check
-
-# 2.0.1
-
-## Bufix
-
-* `publisher.Pub[T]` interface matches the `publisher.Publisher[T]`
-
-# v2.0.0
-
-## Breaking
-
-* Publisher now accepts `exchangeName string` as required parameter to `publisher.New()`
-* Testing package renamed from `testing_utils` to `testing`
-* Removed `testing.SetupAmqp` in favour of `NewMappings`
-* `ConsumeAMQPMessages` no longer accepts `*amqp091.Channel`
-* `ConsumeAMQPMessages` no longer accepts `context.Context`
-* `ConsumeAMQPMessages` has `time.Duration` as optional parameter
-* `PublishAMQPMessage` no longer accepts `*amqp091.Channel`
-* `PublishAMQPMessage` no longer accepts `context.Context`
-* `Logger` moved to `logging` package
-* `publisher.Pub[T]` has additional parameter for config -> future Use
-
-## Features
-
-* Added `testing.AssertAMQPMessageCount`
-* Added `testing.PublishConfig` to declare AMQP Exchange params
-* Added missing `ExchangeTypeHeader` to publisher
-
-## Bugfixes
-
-* When connecting for the first time, `connection.Connection` respects `connection.Config.ReconnectRetry` and `connection.Config.ReconnectInterval`
-* Deadlock on `publisher` when connecting more than once -> locked mutex
-
-# v1.1.0
-
-* Retry Message Handler
+\* *This Changelog was automatically generated by [github_changelog_generator](https://github.com/github-changelog-generator/github-changelog-generator)*
