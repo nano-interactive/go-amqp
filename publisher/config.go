@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/nano-interactive/go-amqp/v3/connection"
-	"github.com/nano-interactive/go-amqp/v3/logging"
 	"github.com/nano-interactive/go-amqp/v3/serializer"
 )
 
@@ -12,7 +11,6 @@ type (
 	Config[T any] struct {
 		ctx               context.Context
 		serializer        serializer.Serializer[T]
-		logger            logging.Logger
 		onError           connection.OnErrorFunc
 		exchange          ExchangeDeclare
 		connectionOptions connection.Config
@@ -87,13 +85,5 @@ func WithConnectionOptions[T any](connectionOptions connection.Config) Option[T]
 func WithBufferedMessages[T any](capacity int) Option[T] {
 	return func(c *Config[T]) {
 		c.messageBuffering = capacity
-	}
-}
-
-func WithLogger[T any](logger logging.Logger) Option[T] {
-	return func(c *Config[T]) {
-		if logger != nil {
-			c.logger = logger
-		}
 	}
 }

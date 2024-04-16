@@ -1,4 +1,4 @@
-package amqp
+package amqp_test
 
 import (
 	"context"
@@ -33,7 +33,7 @@ func handler(_ context.Context, msg Message) error {
 func ExampleConsumer() {
 	c, err := consumer.NewFunc(handler,
 		consumer.QueueDeclare{QueueName: "testing_queue"},
-		consumer.WithOnMessageError[Message](func(ctx context.Context, d *amqp091.Delivery, err error) {
+		consumer.WithOnMessageError[Message](func(_ context.Context, _ *amqp091.Delivery, err error) {
 			_, _ = fmt.Fprintf(os.Stderr, "[ERROR] Message error: %s\n", err)
 		}),
 		consumer.WithConnectionOptions[Message](connection.Config{
@@ -63,18 +63,18 @@ func ExampleConsumer() {
 
 type MyHandler struct{}
 
-func (h MyHandler) Handle(ctx context.Context, msg Message) error {
+func (h MyHandler) Handle(_ context.Context, msg Message) error {
 	defer cnt.Add(1)
 	//nolint:forbidigo
-	fmt.Printf("[INFO] Message received: %d %s\n", cnt.Load(), msg.Name)
+	_, _ = fmt.Printf("[INFO] Message received: %d %s\n", cnt.Load(), msg.Name)
 	return nil
 }
 
 func ExampleConsumerWithHandler() {
 	c, err := consumer.New[Message](MyHandler{},
 		consumer.QueueDeclare{QueueName: "testing_queue"},
-		consumer.WithOnMessageError[Message](func(ctx context.Context, d *amqp091.Delivery, err error) {
-			fmt.Fprintf(os.Stderr, "[ERROR] Message error: %s\n", err)
+		consumer.WithOnMessageError[Message](func(_ context.Context, _ *amqp091.Delivery, err error) {
+			_, _ = fmt.Fprintf(os.Stderr, "[ERROR] Message error: %s\n", err)
 		}),
 		consumer.WithConnectionOptions[Message](connection.Config{
 			Host:           "127.0.0.1",
@@ -110,7 +110,7 @@ func ExampleConsumerWithSignal() {
 
 	c, err := consumer.NewFunc(handler,
 		consumer.QueueDeclare{QueueName: "testing_queue"},
-		consumer.WithOnMessageError[Message](func(ctx context.Context, d *amqp091.Delivery, err error) {
+		consumer.WithOnMessageError[Message](func(_ context.Context, _ *amqp091.Delivery, err error) {
 			_, _ = fmt.Fprintf(os.Stderr, "[ERROR] Message error: %s\n", err)
 		}),
 		consumer.WithContext[Message](ctx),
@@ -143,7 +143,7 @@ func ExampleConsumerWithSignal() {
 
 type MyRawHandler struct{}
 
-func (h MyRawHandler) Handle(ctx context.Context, d *amqp091.Delivery) error {
+func (h MyRawHandler) Handle(_ context.Context, d *amqp091.Delivery) error {
 	defer cnt.Add(1)
 	var msg Message
 
@@ -158,7 +158,7 @@ func (h MyRawHandler) Handle(ctx context.Context, d *amqp091.Delivery) error {
 func Example_ConsumerWithRawHandler() {
 	c, err := consumer.NewRaw(MyRawHandler{},
 		consumer.QueueDeclare{QueueName: "testing_queue"},
-		consumer.WithOnMessageError[Message](func(ctx context.Context, d *amqp091.Delivery, err error) {
+		consumer.WithOnMessageError[Message](func(_ context.Context, _ *amqp091.Delivery, err error) {
 			_, _ = fmt.Fprintf(os.Stderr, "[ERROR] Message error: %s\n", err)
 		}),
 		consumer.WithConnectionOptions[Message](connection.Config{

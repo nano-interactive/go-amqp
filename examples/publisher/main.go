@@ -10,16 +10,6 @@ import (
 	"github.com/nano-interactive/go-amqp/v3/publisher"
 )
 
-type logger struct{}
-
-func (d logger) Error(msg string, args ...any) {
-	fmt.Printf("[ERROR]: "+msg+"\n", args...)
-}
-
-func (d logger) Info(msg string, args ...any) {
-	fmt.Printf("[INFO]: "+msg+"\n", args...)
-}
-
 type Message struct {
 	Name string `json:"name"`
 }
@@ -35,21 +25,21 @@ func main() {
 		ReconnectRetry:    10,
 		ReconnectInterval: 1 * time.Second,
 		Channels:          1000,
+		FrameSize:         8192,
 	}
 
 	ctx := context.Background()
 
-	pub, err := publisher.New[Message](
+	pub, err := publisher.New(
 		"testing_publisher",
 		publisher.WithContext[Message](ctx),
 		publisher.WithConnectionOptions[Message](connConfig),
-		publisher.WithLogger[Message](&logger{}),
 	)
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Print("[INFO]: Publisher Created")
+	_, _ = fmt.Println("[INFO]: Publisher Created")
 
 	message := Message{
 		Name: "Nano Interactive",
@@ -59,19 +49,19 @@ func main() {
 
 	for i := 1; i <= 10_000_000; i++ {
 		if err = pub.Publish(ctx, message); err != nil {
-			fmt.Fprintf(os.Stderr, "[ERROR]: Failed to publish message %d with error %v\n", i, err)
+			_, _ = fmt.Fprintf(os.Stderr, "[ERROR]: Failed to publish message %d with error %v\n", i, err)
 			errCount++
 			time.Sleep(10 * time.Millisecond)
 			continue
 		}
 
 		if i%1_000_000 == 0 {
-			fmt.Printf("[INFO]: Message Publushed %d\n", i)
+			_, _ = fmt.Printf("[INFO]: Message Publushed %d\n", i)
 			time.Sleep(200 * time.Millisecond)
 		}
 	}
 
-	fmt.Printf("[INFO]: Total errors %d\n", errCount)
+	_, _ = fmt.Printf("[INFO]: Total errors %d\n", errCount)
 
 	if err = pub.Close(); err != nil {
 		panic(err)

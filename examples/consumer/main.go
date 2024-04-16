@@ -23,18 +23,8 @@ var cnt atomic.Uint64
 
 func handler(ctx context.Context, msg Message) error {
 	defer cnt.Add(1)
-	fmt.Printf("[INFO] Message received: %d %s\n", cnt.Load(), msg.Name)
+	_, _ = fmt.Printf("[INFO] Message received: %d %s\n", cnt.Load(), msg.Name)
 	return nil
-}
-
-type logger struct{}
-
-func (d logger) Error(msg string, args ...any) {
-	fmt.Printf("[ERROR]: "+msg+"\n", args...)
-}
-
-func (d logger) Info(msg string, args ...any) {
-	fmt.Printf("[INFO]: "+msg+"\n", args...)
 }
 
 func main() {
@@ -44,14 +34,15 @@ func main() {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 
-	c, err := consumer.NewFunc(handler,
+	c, err := consumer.NewFunc(
+		handler,
 		consumer.QueueDeclare{
 			ExchangeBindings: []consumer.ExchangeBinding{{ExchangeName: "testing_publisher"}},
 			QueueName:        "testing_queue",
 			Durable:          true,
 		},
 		consumer.WithOnMessageError[Message](func(ctx context.Context, d *amqp091.Delivery, err error) {
-			fmt.Fprintf(os.Stderr, "[ERROR] Message error: %s\n", err)
+			_, _ = fmt.Fprintf(os.Stderr, "[ERROR] Message error: %s\n", err)
 		}),
 		consumer.WithContext[Message](ctx),
 		consumer.WithConnectionOptions[Message](connection.Config{
@@ -64,8 +55,8 @@ func main() {
 			ReconnectRetry:    10,
 			ReconnectInterval: 1 * time.Second,
 			Channels:          1000,
+			FrameSize:         8192,
 		}),
-		consumer.WithLogger[Message](logger{}),
 		consumer.WithQueueConfig[Message](consumer.QueueConfig{
 			Workers:       1,
 			PrefetchCount: 128,
@@ -75,10 +66,16 @@ func main() {
 		panic(err)
 	}
 
-	fmt.Println("[INFO] Consumer started")
+	go func() {
+		if err := c.Start(ctx); err != nil {
+			panic(err)
+		}
+	}()
+
+	_, _ = fmt.Println("[INFO] Consumer started")
 	<-sig
 	cancel()
-	fmt.Println("[INFO] Signal Recieved")
+	_, _ = fmt.Println("[INFO] Signal Recieved")
 
 	if err := c.Close(); err != nil {
 		panic(err)

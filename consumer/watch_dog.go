@@ -2,17 +2,39 @@ package consumer
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/rabbitmq/amqp091-go"
 )
+
+func (c *Consumer[T]) watchdogWatcher(ctx context.Context, conn *amqp091.Connection) {
+	defer c.watcher.Release(1)
+
+	l := newListener(
+		c.queueDeclare.QueueName,
+		c.cfg.queueConfig,
+		conn,
+		c.handler,
+		c.cfg.onMessageError,
+	)
+
+	if c.cfg.onListenerStart != nil {
+		c.cfg.onListenerStart(ctx, 1)
+	}
+
+	if c.cfg.onListenerExit != nil {
+		defer c.cfg.onListenerExit(ctx, 1)
+	}
+
+	if err := l.Listen(ctx); err != nil {
+		c.cfg.onError(&ListenerStartFailedError{Inner: err})
+	}
+}
 
 func (c *Consumer[T]) watchdog(
 	ctx context.Context,
 	conn *amqp091.Connection,
 ) (func(), error) {
 	channel, err := conn.Channel()
-
 	if err != nil {
 		return nil, err
 	}
@@ -25,7 +47,6 @@ func (c *Consumer[T]) watchdog(
 		c.queueDeclare.NoWait,
 		nil,
 	)
-
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +68,7 @@ func (c *Consumer[T]) watchdog(
 			return nil, err
 		}
 	} else {
-		return nil, fmt.Errorf("failed to declare queue: %v", err)
+		return nil, &QueueDeclarationError{Inner: err}
 	}
 
 	return func() {
@@ -56,30 +77,7 @@ func (c *Consumer[T]) watchdog(
 				return
 			}
 
-			go func() {
-				defer c.watcher.Release(1)
-
-				l := newListener(
-					1, // FIXME
-					c.queueDeclare.QueueName,
-					c.cfg.queueConfig,
-					conn,
-					c.handler,
-					c.cfg.onMessageError,
-				)
-
-				if c.cfg.onListenerStart != nil {
-					c.cfg.onListenerStart(ctx, 1)
-				}
-
-				if c.cfg.onListenerExit != nil {
-					defer c.cfg.onListenerExit(ctx, 1)
-				}
-
-				if err := l.Listen(ctx); err != nil {
-					c.cfg.onError(fmt.Errorf("failed to start listener: %v", err))
-				}
-			}()
+			go c.watchdogWatcher(ctx, conn)
 		}
 	}, nil
 }

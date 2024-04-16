@@ -1,8 +1,9 @@
-package serializer
+package serializer_test
 
 import (
 	"testing"
 
+	"github.com/nano-interactive/go-amqp/v3/serializer"
 	"github.com/stretchr/testify/require"
 )
 
@@ -10,15 +11,17 @@ type message struct {
 	Name string `json:"name"`
 }
 
-var serializer Serializer[message] = JsonSerializer[message]{}
+var ser serializer.Serializer[message] = serializer.JSON[message]{}
 
 func TestSerializerSuccess(t *testing.T) {
+	t.Parallel()
+
 	// Arrange
 	assert := require.New(t)
 	data := message{Name: "Test"}
 
 	// Act
-	json, err := serializer.Marshal(data)
+	json, err := ser.Marshal(data)
 
 	// Assert
 	assert.NoError(err)
@@ -27,12 +30,14 @@ func TestSerializerSuccess(t *testing.T) {
 }
 
 func TestSerializerEmpty(t *testing.T) {
+	t.Parallel()
+
 	// Arrange
 	assert := require.New(t)
 	data := message{Name: ""}
 
 	// Act
-	json, err := serializer.Marshal(data)
+	json, err := ser.Marshal(data)
 
 	// Assert
 	assert.NoError(err)
@@ -41,11 +46,13 @@ func TestSerializerEmpty(t *testing.T) {
 }
 
 func TestDeSerializerSuccess(t *testing.T) {
+	t.Parallel()
+
 	// Arrange
 	assert := require.New(t)
 
 	// Act
-	data, err := serializer.Unmarshal([]byte(`{"name": "Test"}`))
+	data, err := ser.Unmarshal([]byte(`{"name": "Test"}`))
 
 	// Assert
 	assert.NoError(err)
@@ -53,11 +60,13 @@ func TestDeSerializerSuccess(t *testing.T) {
 }
 
 func TestDeSerializerFail(t *testing.T) {
+	t.Parallel()
+
 	// Arrange
 	assert := require.New(t)
 
 	// Act
-	data, err := serializer.Unmarshal([]byte(`{"name": false}`))
+	data, err := ser.Unmarshal([]byte(`{"name": false}`))
 
 	// Assert
 	assert.Error(err)
@@ -65,11 +74,13 @@ func TestDeSerializerFail(t *testing.T) {
 }
 
 func TestSerializerContentType(t *testing.T) {
+	t.Parallel()
+
 	// Arrange
 	assert := require.New(t)
 
 	// Act
-	contentType := serializer.GetContentType()
+	contentType := ser.GetContentType()
 
 	// Assert
 	assert.Equal(contentType, "application/json")

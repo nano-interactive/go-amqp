@@ -3,9 +3,10 @@ package consumer
 import (
 	"context"
 	"errors"
-	"golang.org/x/sync/semaphore"
 	"io"
 	"reflect"
+
+	"golang.org/x/sync/semaphore"
 
 	"github.com/nano-interactive/go-amqp/v3/connection"
 	"github.com/nano-interactive/go-amqp/v3/serializer"
@@ -17,7 +18,7 @@ var (
 )
 
 type (
-	Message interface{}
+	Message any
 
 	Consumer[T Message] struct {
 		watcher      *semaphore.Weighted
@@ -31,7 +32,7 @@ func NewRaw[T Message](handler RawHandler, queueDeclare QueueDeclare, options ..
 	var msg T
 
 	if reflect.ValueOf(msg).Kind() == reflect.Ptr {
-		return Consumer[T]{}, errors.New("message type must be a value type")
+		return Consumer[T]{}, ErrMessageTypeInvalid
 	}
 
 	cfg := Config[T]{
@@ -40,7 +41,7 @@ func NewRaw[T Message](handler RawHandler, queueDeclare QueueDeclare, options ..
 			Workers:       1,
 		},
 		retryCount: 1,
-		serializer: serializer.JsonSerializer[T]{},
+		serializer: serializer.JSON[T]{},
 		ctx:        context.Background(),
 		onError: func(err error) {
 			if errors.Is(err, connection.ErrRetriesExhausted) {
@@ -58,11 +59,11 @@ func NewRaw[T Message](handler RawHandler, queueDeclare QueueDeclare, options ..
 	}
 
 	if queueDeclare.QueueName == "" {
-		return Consumer[T]{}, errors.New("q name is required... Please call WithQueueName(queueName) option function")
+		return Consumer[T]{}, ErrQueueNameRequired
 	}
 
 	if cfg.onMessageError == nil {
-		panic("onMessageError is required")
+		return Consumer[T]{}, ErrOnMessageCallbackRequired
 	}
 
 	return Consumer[T]{
@@ -74,7 +75,7 @@ func NewRaw[T Message](handler RawHandler, queueDeclare QueueDeclare, options ..
 }
 
 func NewRawFunc[T Message](h RawHandlerFunc, queueDeclare QueueDeclare, options ...Option[T]) (Consumer[T], error) {
-	return NewRaw[T](h, queueDeclare, options...)
+	return NewRaw(h, queueDeclare, options...)
 }
 
 func NewFunc[T Message](h HandlerFunc[T], queueDeclare QueueDeclare, options ...Option[T]) (Consumer[T], error) {
@@ -90,7 +91,7 @@ func NewFunc[T Message](h HandlerFunc[T], queueDeclare QueueDeclare, options ...
 	)
 
 	if cfg.serializer == nil {
-		s = serializer.JsonSerializer[T]{}
+		s = serializer.JSON[T]{}
 	} else {
 		s = cfg.serializer
 	}
@@ -109,7 +110,7 @@ func NewFunc[T Message](h HandlerFunc[T], queueDeclare QueueDeclare, options ...
 		rawHandler = privHandler
 	}
 
-	return NewRaw[T](rawHandler, queueDeclare, options...)
+	return NewRaw(rawHandler, queueDeclare, options...)
 }
 
 func New[T Message](h Handler[T], queueDeclare QueueDeclare, options ...Option[T]) (Consumer[T], error) {
@@ -125,7 +126,7 @@ func New[T Message](h Handler[T], queueDeclare QueueDeclare, options ...Option[T
 	)
 
 	if cfg.serializer == nil {
-		s = serializer.JsonSerializer[T]{}
+		s = serializer.JSON[T]{}
 	} else {
 		s = cfg.serializer
 	}
@@ -144,7 +145,7 @@ func New[T Message](h Handler[T], queueDeclare QueueDeclare, options ...Option[T
 		rawHandler = privHandler
 	}
 
-	return NewRaw[T](rawHandler, queueDeclare, options...)
+	return NewRaw(rawHandler, queueDeclare, options...)
 }
 
 func (c Consumer[T]) Close() error {

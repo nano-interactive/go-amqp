@@ -12,19 +12,16 @@ type listener struct {
 	onMessageError func(context.Context, *amqp091.Delivery, error)
 	queueName      string
 	cfg            QueueConfig
-	id             int
 }
 
 func newListener(
-	id int,
 	queueName string,
 	cfg QueueConfig,
 	conn *amqp091.Connection,
 	handler RawHandler,
 	onMessageError func(context.Context, *amqp091.Delivery, error),
-) *listener {
-	return &listener{
-		id:             id,
+) listener {
+	return listener{
 		conn:           conn,
 		queueName:      queueName,
 		cfg:            cfg,
@@ -33,7 +30,7 @@ func newListener(
 	}
 }
 
-func (l *listener) Listen(ctx context.Context) error {
+func (l listener) Listen(ctx context.Context) error {
 	channel, err := l.conn.Channel()
 	if err != nil {
 		return err
@@ -52,7 +49,6 @@ func (l *listener) Listen(ctx context.Context) error {
 		false,
 		nil,
 	)
-
 	if err != nil {
 		return err
 	}

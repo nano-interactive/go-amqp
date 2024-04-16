@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -15,8 +17,8 @@ import (
 	"github.com/nano-interactive/go-amqp/v3/publisher"
 )
 
-func GetAMQPConnection(t testing.TB, cfg connection.Config) (*amqp091.Connection, *amqp091.Channel) {
-	t.Helper()
+func GetAMQPConnection(tb testing.TB, cfg connection.Config) (*amqp091.Connection, *amqp091.Channel) {
+	tb.Helper()
 
 	if cfg.Channels == 0 {
 		cfg.Channels = connection.DefaultConfig.Channels
@@ -51,11 +53,10 @@ func GetAMQPConnection(t testing.TB, cfg connection.Config) (*amqp091.Connection
 	}
 
 	connectionURI := fmt.Sprintf(
-		"amqp://%s:%s@%s:%d",
+		"amqp://%s:%s@%s",
 		cfg.User,
 		cfg.Password,
-		cfg.Host,
-		cfg.Port,
+		net.JoinHostPort(cfg.Host, strconv.FormatInt(int64(cfg.Port), 10)),
 	)
 
 	properties := amqp091.NewConnectionProperties()
@@ -70,22 +71,22 @@ func GetAMQPConnection(t testing.TB, cfg connection.Config) (*amqp091.Connection
 
 	conn, err := amqp091.DialConfig(connectionURI, config)
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 
 	ch, err := conn.Channel()
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 
-	t.Cleanup(func() {
+	tb.Cleanup(func() {
 		if err = ch.Close(); err != nil {
-			t.Logf("error closing channel: %v", err)
+			tb.Logf("error closing channel: %v", err)
 			return
 		}
 
 		if err = conn.Close(); err != nil {
-			t.Logf("error closing connection: %v", err)
+			tb.Logf("error closing connection: %v", err)
 			return
 		}
 	})
@@ -275,30 +276,33 @@ func (q QueueExchangeMapping) Queue(prefix string) string {
 }
 
 func AssertAMQPMessageCount[T any](
-	t testing.TB,
+	tb testing.TB,
 	queueName string,
 	expectedCount int,
 	cfg connection.Config,
 	duration ...time.Duration,
 ) []T {
-	messages := ConsumeAMQPMessages[T](t, queueName, cfg, duration...)
+	tb.Helper()
+
+	messages := ConsumeAMQPMessages[T](tb, queueName, cfg, duration...)
 
 	if len(messages) != expectedCount {
-		t.Fatalf("expected %d messages, got %d", expectedCount, len(messages))
+		tb.Fatalf("expected %d messages, got %d", expectedCount, len(messages))
 	}
 
 	return messages
 }
 
 func ConsumeAMQPMessages[T any](
-	t testing.TB,
+	tb testing.TB,
 	queueName string,
 	cfg connection.Config,
 	duration ...time.Duration,
 ) []T {
+	tb.Helper()
 	messages := make([]T, 0, 10)
 
-	_, channel := GetAMQPConnection(t, cfg)
+	_, channel := GetAMQPConnection(tb, cfg)
 
 	ch, err := channel.Consume(
 		queueName,
@@ -310,7 +314,7 @@ func ConsumeAMQPMessages[T any](
 		nil,
 	)
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 
 	ctx := context.Background()
@@ -318,7 +322,7 @@ func ConsumeAMQPMessages[T any](
 	if len(duration) > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, duration[0])
-		t.Cleanup(cancel)
+		tb.Cleanup(cancel)
 	}
 
 	for {
@@ -329,13 +333,13 @@ func ConsumeAMQPMessages[T any](
 			}
 
 			if err = d.Ack(false); err != nil {
-				t.Fatal(err)
+				tb.Fatal(err)
 			}
 
 			var data T
 
 			if err = json.Unmarshal(d.Body, &data); err != nil {
-				t.Fatal(err)
+				tb.Fatal(err)
 			}
 
 			messages = append(messages, data)
@@ -353,12 +357,14 @@ type PublishConfig struct {
 }
 
 func PublishAMQPMessage(
-	t testing.TB,
+	tb testing.TB,
 	exchange string,
 	msg any,
 	conn connection.Config,
 	config ...PublishConfig,
 ) {
+	tb.Helper()
+
 	cfg := PublishConfig{Duration: 0, RoutingKey: "", Marshal: json.Marshal, ContentType: "application/json"}
 	if len(config) > 0 {
 		if config[0].Marshal == nil {
@@ -374,16 +380,16 @@ func PublishAMQPMessage(
 
 	message, err := cfg.Marshal(msg)
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 
-	_, channel := GetAMQPConnection(t, conn)
+	_, channel := GetAMQPConnection(tb, conn)
 	ctx := context.Background()
 
 	if cfg.Duration > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, cfg.Duration)
-		t.Cleanup(cancel)
+		tb.Cleanup(cancel)
 	}
 
 	err = channel.PublishWithContext(
@@ -400,8 +406,8 @@ func PublishAMQPMessage(
 		},
 	)
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 
-	t.Logf("Published message")
+	tb.Logf("Published message")
 }

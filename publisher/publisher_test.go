@@ -42,6 +42,7 @@ func TestPublisherNew(t *testing.T) {
 	assert := require.New(t)
 
 	t.Run("Basic", func(t *testing.T) {
+		t.Parallel()
 		mappings := amqp_testing.NewMappings(t).
 			AddMapping("test_exchange", "test_queue")
 
@@ -52,13 +53,15 @@ func TestPublisherNew(t *testing.T) {
 	})
 
 	t.Run("WithOptions", func(t *testing.T) {
+		t.Parallel()
+
 		mappings := amqp_testing.NewMappings(t).
 			AddMapping("test_exchange", "test_queue")
 
 		pub, err := publisher.New[Msg](
 			mappings.Exchange("test_exchange"),
 			publisher.WithContext[Msg](context.Background()),
-			publisher.WithSerializer[Msg](serializer.JsonSerializer[Msg]{}),
+			publisher.WithSerializer[Msg](serializer.JSON[Msg]{}),
 		)
 
 		assert.NoError(err)
@@ -66,6 +69,8 @@ func TestPublisherNew(t *testing.T) {
 	})
 
 	t.Run("ConnectionFailed", func(t *testing.T) {
+		t.Parallel()
+
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 
 		t.Cleanup(cancel)
@@ -90,6 +95,8 @@ func TestPublisherPublish(t *testing.T) {
 	assert := require.New(t)
 
 	t.Run("Basic", func(t *testing.T) {
+		t.Parallel()
+
 		mappings := amqp_testing.NewMappings(t).
 			AddMapping("test_exchange_basic", "test_queue_basic")
 
@@ -107,6 +114,8 @@ func TestPublisherPublish(t *testing.T) {
 	})
 
 	t.Run("WithSerializer", func(t *testing.T) {
+		t.Parallel()
+
 		mappings := amqp_testing.NewMappings(t).
 			AddMapping("test_exchange_serializer", "test_queue_serializer")
 
@@ -143,6 +152,8 @@ func TestPublisherPublish(t *testing.T) {
 	})
 
 	t.Run("WithSerializerFails", func(t *testing.T) {
+		t.Parallel()
+
 		mappings := amqp_testing.NewMappings(t).
 			AddMapping("test_exchange_serializer_fails", "test_queue_serializer_fails")
 
@@ -155,6 +166,7 @@ func TestPublisherPublish(t *testing.T) {
 		assert.NoError(err)
 		assert.NotNil(pub)
 
+		//nolint:goerr113
 		expectedErr := errors.New("failed to serialize")
 
 		mockSerializer.On("Marshal", Msg{Name: "test"}).
@@ -182,6 +194,8 @@ func TestPublisherClose(t *testing.T) {
 	assert := require.New(t)
 
 	t.Run("Basic", func(t *testing.T) {
+		t.Parallel()
+
 		mappings := amqp_testing.NewMappings(t).
 			AddMapping("test_exchange_close", "test_queue_close")
 
@@ -193,6 +207,7 @@ func TestPublisherClose(t *testing.T) {
 	})
 
 	t.Run("Call_To_Publish_After_Close", func(t *testing.T) {
+		t.Parallel()
 		mappings := amqp_testing.NewMappings(t).
 			AddMapping("test_exchange_after_close", "test_queue_after_close")
 
@@ -205,6 +220,8 @@ func TestPublisherClose(t *testing.T) {
 	})
 
 	t.Run("Multiple_Close_Calling", func(t *testing.T) {
+		t.Parallel()
+
 		mappings := amqp_testing.NewMappings(t).
 			AddMapping("test_exchange_multiple_close_call", "test_queue_multiple_close_call")
 

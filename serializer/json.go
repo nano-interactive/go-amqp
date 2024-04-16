@@ -2,9 +2,9 @@ package serializer
 
 import "encoding/json"
 
-type JsonSerializer[T any] struct{}
+type JSON[T any] struct{}
 
-func (j JsonSerializer[T]) Marshal(v T) ([]byte, error) {
+func (j JSON[T]) Marshal(v T) ([]byte, error) {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return nil, err
@@ -13,7 +13,7 @@ func (j JsonSerializer[T]) Marshal(v T) ([]byte, error) {
 	return data, nil
 }
 
-func (j JsonSerializer[T]) Unmarshal(data []byte) (T, error) {
+func (j JSON[T]) Unmarshal(data []byte) (T, error) {
 	var value T
 
 	if err := json.Unmarshal(data, &value); err != nil {
@@ -23,6 +23,6 @@ func (j JsonSerializer[T]) Unmarshal(data []byte) (T, error) {
 	return value, nil
 }
 
-func (j JsonSerializer[T]) GetContentType() string {
+func (j JSON[T]) GetContentType() string {
 	return "application/json"
 }

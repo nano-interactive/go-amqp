@@ -26,7 +26,6 @@ func (c *Consumer[T]) Start(base context.Context) error {
 
 		OnConnectionReady: func(ctx context.Context, connection *amqp091.Connection) error {
 			fn, err := c.watchdog(ctx, connection)
-
 			if err != nil {
 				return err
 			}
@@ -37,7 +36,6 @@ func (c *Consumer[T]) Start(base context.Context) error {
 		},
 		OnError: c.cfg.onError,
 	})
-
 	if err != nil {
 		return err
 	}

@@ -71,6 +71,34 @@ func (h handler[T]) Handle(ctx context.Context, delivery *amqp091.Delivery) erro
 	return nil
 }
 
+func (h retryHandler[T]) retry(err error, delivery *amqp091.Delivery) error {
+	_, ok := delivery.Headers[retryHeader]
+
+	if !ok {
+		delivery.Headers[retryHeader] = int64(h.retryCount)
+	}
+
+	if errors.Is(err, ErrNoRetry) {
+		_ = delivery.Reject(false)
+		return err
+	}
+
+	requeue := true
+	valInt := delivery.Headers[retryHeader].(int64)
+
+	if valInt <= 0 {
+		requeue = false
+	} else {
+		delivery.Headers[retryHeader] = valInt - 1
+	}
+
+	if ackErr := delivery.Nack(false, requeue); ackErr != nil {
+		return err
+	}
+
+	return err
+}
+
 func (h retryHandler[T]) Handle(ctx context.Context, delivery *amqp091.Delivery) error {
 	body, err := h.handler.serializer.Unmarshal(delivery.Body)
 	if err != nil {
@@ -79,31 +107,7 @@ func (h retryHandler[T]) Handle(ctx context.Context, delivery *amqp091.Delivery)
 	}
 
 	if err := h.handler.handler.Handle(ctx, body); err != nil {
-		_, ok := delivery.Headers[retryHeader]
-
-		if !ok {
-			delivery.Headers[retryHeader] = int64(h.retryCount)
-		}
-
-		if errors.Is(err, ErrNoRetry) {
-			_ = delivery.Reject(false)
-			return err
-		}
-
-		requeue := true
-		valInt := delivery.Headers[retryHeader].(int64)
-
-		if valInt <= 0 {
-			requeue = false
-		} else {
-			delivery.Headers[retryHeader] = valInt - 1
-		}
-
-		if ackErr := delivery.Nack(false, requeue); ackErr != nil {
-			return err
-		}
-
-		return err
+		return h.retry(err, delivery)
 	}
 
 	if ackErr := delivery.Ack(false); ackErr != nil {
