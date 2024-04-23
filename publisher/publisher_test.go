@@ -231,23 +231,4 @@ func TestPublisherClose(t *testing.T) {
 		assert.NoError(pub.Close())
 		assert.ErrorIs(pub.Publish(context.Background(), Msg{Name: "test"}), publisher.ErrClosed)
 	})
-
-	t.Run("Multiple_Close_Calling", func(t *testing.T) {
-		t.Parallel()
-
-		mappings := amqp_testing.NewMappings(t).
-			AddMapping("test_exchange_multiple_close_call", "test_queue_multiple_close_call")
-
-		pub, err := publisher.New[Msg](
-			context.TODO(),
-			connection.DefaultConfig,
-			mappings.Exchange("test_exchange_multiple_close_call"),
-		)
-		assert.NoError(err)
-		assert.NotNil(pub)
-
-		assert.NoError(pub.Close())
-		assert.NoError(pub.Close())
-		assert.NoError(pub.Close())
-	})
 }

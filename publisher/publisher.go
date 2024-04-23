@@ -36,6 +36,7 @@ type (
 		conn         *connection.Connection
 		ch           atomic.Pointer[amqp091.Channel]
 		semaphore    *semaphore.Weighted
+		cancel       context.CancelFunc
 		exchangeName string
 		routingKey   string
 		closing      atomic.Bool
@@ -76,18 +77,19 @@ func (p *Publisher[T]) swapChannel(connection *amqp091.Connection, cfg Config[T]
 }
 
 func (p *Publisher[T]) connectionReadyWorker(ctx context.Context, conn *amqp091.Connection, notifyClose chan *amqp091.Error, cfg Config[T]) {
-	defer p.semaphore.Release(1)
 	errCh := make(chan error)
-	defer close(errCh)
-	var err error
 
 	defer func() {
+		close(errCh)
+		p.semaphore.Release(1)
 		p.closing.Store(true)
 		ch := p.ch.Load()
 		if !ch.IsClosed() {
 			_ = ch.Close()
 		}
 	}()
+
+	var err error
 
 	for {
 		select {
@@ -183,11 +185,14 @@ func New[T any](ctx context.Context, connectionOpts connection.Config, exchangeN
 		option(&cfg)
 	}
 
+	ctx, cancel := context.WithCancel(ctx)
+
 	publisher := &Publisher[T]{
 		serializer:   cfg.serializer,
 		exchangeName: exchangeName,
 		routingKey:   cfg.exchange.RoutingKey,
 		semaphore:    semaphore.NewWeighted(1),
+		cancel:       cancel,
 	}
 
 	conn, err := connection.New(ctx, connectionOpts, connection.Events{
@@ -203,6 +208,7 @@ func New[T any](ctx context.Context, connectionOpts connection.Config, exchangeN
 	}
 
 	publisher.conn = conn
+
 	return publisher, nil
 }
 
@@ -239,6 +245,7 @@ func (p *Publisher[T]) Publish(ctx context.Context, msg T, _ ...PublishConfig) e
 
 func (p *Publisher[T]) CloseWithContext(ctx context.Context) error {
 	p.closing.Store(true)
+	p.cancel()
 
 	if err := p.semaphore.Acquire(ctx, 1); err != nil {
 		return err
