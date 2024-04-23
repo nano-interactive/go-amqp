@@ -36,16 +36,7 @@ func main() {
 
 	c, err := consumer.NewFunc(
 		handler,
-		consumer.QueueDeclare{
-			ExchangeBindings: []consumer.ExchangeBinding{{ExchangeName: "testing_publisher"}},
-			QueueName:        "testing_queue",
-			Durable:          true,
-		},
-		consumer.WithOnMessageError[Message](func(ctx context.Context, d *amqp091.Delivery, err error) {
-			_, _ = fmt.Fprintf(os.Stderr, "[ERROR] Message error: %s\n", err)
-		}),
-		consumer.WithContext[Message](ctx),
-		consumer.WithConnectionOptions[Message](connection.Config{
+		connection.Config{
 			Host:              "127.0.0.1",
 			Port:              5672,
 			User:              "guest",
@@ -56,6 +47,14 @@ func main() {
 			ReconnectInterval: 1 * time.Second,
 			Channels:          1000,
 			FrameSize:         8192,
+		},
+		consumer.QueueDeclare{
+			ExchangeBindings: []consumer.ExchangeBinding{{ExchangeName: "testing_publisher"}},
+			QueueName:        "testing_queue",
+			Durable:          true,
+		},
+		consumer.WithOnMessageError[Message](func(ctx context.Context, d *amqp091.Delivery, err error) {
+			_, _ = fmt.Fprintf(os.Stderr, "[ERROR] Message error: %s\n", err)
 		}),
 		consumer.WithQueueConfig[Message](consumer.QueueConfig{
 			Workers:       1,

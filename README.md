@@ -4,7 +4,7 @@
 [![codecov](https://codecov.io/gh/nano-interactive/go-amqp/branch/master/graph/badge.svg?token=JQTAGQ11DS)](https://codecov.io/gh/nano-interactive/go-amqp)
 [![Go Report Card](https://goreportcard.com/badge/github.com/nano-interactive/go-amqp)](https://goreportcard.com/report/github.com/nano-interactive/go-amqp)
 
-# Introduction
+## Introduction
 
 Having a distributed system with a message broker and no good wrappers for AMQP can be a hard work to develop, maintain and keeps the system running.
 Working with async protocol in a language that does not support async code is a nightmare, especially with system that need to run 24/7/365. A lot of things can go wrong (e.g connection breaks, channel closes, memory leaks ...).
@@ -52,7 +52,6 @@ is places in the library so that the users of the library don't even think about
 
 ```go
 
-// consumer (c) is non blocking
 c, err := consumer.NewFunc(
     handler,
     consumer.QueueDeclare{QueueName: "testing_queue"},
@@ -67,6 +66,8 @@ c, err := consumer.NewFunc(
         ConnectionName:    "go-amqp-consumer",
     }),
 )
+
+c.Start(context.Background())
 
 time.Sleep(100*time.Second)
 
@@ -85,8 +86,8 @@ type Message {
 }
 
 func handler(ctx context.Context, msg Message) error {
-	fmt.Printf("[INFO] Message received: %s\n", msg.Name)
-	return nil
+ fmt.Printf("[INFO] Message received: %s\n", msg.Name)
+ return nil
 }
 ```
 
@@ -101,8 +102,8 @@ type Message {
 type MyHandler struct{}
 
 func (h MyHandler) Handle(ctx context.Context, msg Message) error {
-	fmt.Printf("[INFO] Message received: %s\n", msg.Name)
-	return nil
+ fmt.Printf("[INFO] Message received: %s\n", msg.Name)
+ return nil
 }
 
 ```
@@ -171,7 +172,6 @@ if err := pub.Close(); err != nil {
 }
 
 ```
-
 
 ### Testing Example
 

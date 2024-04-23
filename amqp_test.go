@@ -32,15 +32,10 @@ func handler(_ context.Context, msg Message) error {
 
 func ExampleConsumer() {
 	c, err := consumer.NewFunc(handler,
+		connection.DefaultConfig,
 		consumer.QueueDeclare{QueueName: "testing_queue"},
 		consumer.WithOnMessageError[Message](func(_ context.Context, _ *amqp091.Delivery, err error) {
 			_, _ = fmt.Fprintf(os.Stderr, "[ERROR] Message error: %s\n", err)
-		}),
-		consumer.WithConnectionOptions[Message](connection.Config{
-			Host:           "127.0.0.1",
-			User:           "guest",
-			Password:       "guest",
-			ConnectionName: "go-amqp-consumer",
 		}),
 	)
 	if err != nil {
@@ -72,15 +67,10 @@ func (h MyHandler) Handle(_ context.Context, msg Message) error {
 
 func ExampleConsumerWithHandler() {
 	c, err := consumer.New[Message](MyHandler{},
+		connection.DefaultConfig,
 		consumer.QueueDeclare{QueueName: "testing_queue"},
 		consumer.WithOnMessageError[Message](func(_ context.Context, _ *amqp091.Delivery, err error) {
 			_, _ = fmt.Fprintf(os.Stderr, "[ERROR] Message error: %s\n", err)
-		}),
-		consumer.WithConnectionOptions[Message](connection.Config{
-			Host:           "127.0.0.1",
-			User:           "guest",
-			Password:       "guest",
-			ConnectionName: "go-amqp-consumer",
 		}),
 	)
 	if err != nil {
@@ -109,16 +99,10 @@ func ExampleConsumerWithSignal() {
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 
 	c, err := consumer.NewFunc(handler,
+		connection.DefaultConfig,
 		consumer.QueueDeclare{QueueName: "testing_queue"},
 		consumer.WithOnMessageError[Message](func(_ context.Context, _ *amqp091.Delivery, err error) {
 			_, _ = fmt.Fprintf(os.Stderr, "[ERROR] Message error: %s\n", err)
-		}),
-		consumer.WithContext[Message](ctx),
-		consumer.WithConnectionOptions[Message](connection.Config{
-			Host:           "127.0.0.1",
-			User:           "guest",
-			Password:       "guest",
-			ConnectionName: "go-amqp-consumer",
 		}),
 	)
 	if err != nil {
@@ -157,15 +141,10 @@ func (h MyRawHandler) Handle(_ context.Context, d *amqp091.Delivery) error {
 
 func Example_ConsumerWithRawHandler() {
 	c, err := consumer.NewRaw(MyRawHandler{},
+		connection.DefaultConfig,
 		consumer.QueueDeclare{QueueName: "testing_queue"},
 		consumer.WithOnMessageError[Message](func(_ context.Context, _ *amqp091.Delivery, err error) {
 			_, _ = fmt.Fprintf(os.Stderr, "[ERROR] Message error: %s\n", err)
-		}),
-		consumer.WithConnectionOptions[Message](connection.Config{
-			Host:           "127.0.0.1",
-			User:           "guest",
-			Password:       "guest",
-			ConnectionName: "go-amqp-consumer",
 		}),
 	)
 	if err != nil {
