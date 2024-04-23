@@ -14,7 +14,7 @@ type (
 	}
 )
 
-func (c *Consumer[T]) Start(base context.Context) error {
+func (c *Consumer[T, Q]) Start(base context.Context) error {
 	_, cancel := context.WithCancel(base)
 
 	conn, err := connection.New(base, c.cfg.connectionOptions, connection.Events{

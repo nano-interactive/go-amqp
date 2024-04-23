@@ -6,11 +6,13 @@ import (
 	"github.com/rabbitmq/amqp091-go"
 )
 
-func (c *Consumer[T]) watchdogWatcher(ctx context.Context, conn *amqp091.Connection) {
+func (c *Consumer[T, Q]) watchdogWatcher(ctx context.Context, conn *amqp091.Connection) {
 	defer c.watcher.Release(1)
 
+	queue := c.queueDeclare.QueueConfig()
+
 	l := newListener(
-		c.queueDeclare.QueueName,
+		queue.QueueName,
 		c.cfg.queueConfig,
 		conn,
 		c.handler,
@@ -30,7 +32,7 @@ func (c *Consumer[T]) watchdogWatcher(ctx context.Context, conn *amqp091.Connect
 	}
 }
 
-func (c *Consumer[T]) watchdog(
+func (c *Consumer[T, Q]) watchdog(
 	ctx context.Context,
 	conn *amqp091.Connection,
 ) (func(), error) {
@@ -39,21 +41,23 @@ func (c *Consumer[T]) watchdog(
 		return nil, err
 	}
 
+	queue := c.queueDeclare.QueueConfig()
+
 	_, err = channel.QueueDeclare(
-		c.queueDeclare.QueueName,
-		c.queueDeclare.Durable,
-		c.queueDeclare.AutoDelete,
-		c.queueDeclare.Exclusive,
-		c.queueDeclare.NoWait,
+		queue.QueueName,
+		queue.Durable,
+		queue.AutoDelete,
+		queue.Exclusive,
+		queue.NoWait,
 		nil,
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, binding := range c.queueDeclare.ExchangeBindings {
+	for _, binding := range queue.ExchangeBindings {
 		if err = channel.QueueBind(
-			c.queueDeclare.QueueName,
+			queue.QueueName,
 			binding.RoutingKey,
 			binding.ExchangeName,
 			false,

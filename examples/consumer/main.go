@@ -27,6 +27,16 @@ func handler(ctx context.Context, msg Message) error {
 	return nil
 }
 
+type ExampleQueue struct{}
+
+func (q ExampleQueue) QueueConfig() consumer.QueueDeclare {
+	return consumer.QueueDeclare{
+		ExchangeBindings: []consumer.ExchangeBinding{{ExchangeName: "testing_publisher"}},
+		QueueName:        "testing_queue",
+		Durable:          true,
+	}
+}
+
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -48,11 +58,7 @@ func main() {
 			Channels:          1000,
 			FrameSize:         8192,
 		},
-		consumer.QueueDeclare{
-			ExchangeBindings: []consumer.ExchangeBinding{{ExchangeName: "testing_publisher"}},
-			QueueName:        "testing_queue",
-			Durable:          true,
-		},
+		ExampleQueue{},
 		consumer.WithOnMessageError[Message](func(ctx context.Context, d *amqp091.Delivery, err error) {
 			_, _ = fmt.Fprintf(os.Stderr, "[ERROR] Message error: %s\n", err)
 		}),
