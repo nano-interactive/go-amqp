@@ -36,7 +36,7 @@ jobs:
         with:
           go-version: ${{ matrix.go }}
       - name: Install Task
-        uses: arduino/setup-task@v1
+        uses: arduino/setup-task@v2
         with:
           version: 3.x
           repo-token: ${{ secrets.GITHUB_TOKEN }}
@@ -45,7 +45,7 @@ jobs:
           go install github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt@latest
           task test
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v4.0.1
+        uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: nano-interactive/go-amqp
