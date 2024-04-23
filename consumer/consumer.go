@@ -28,34 +28,38 @@ type (
 	}
 )
 
-func NewRaw[T Message](handler RawHandler, queueDeclare QueueDeclare, options ...Option[T]) (Consumer[T], error) {
+func NewRaw[T Message](
+	handler RawHandler,
+	connectionOptions connection.Config,
+	queueDeclare QueueDeclare,
+	options ...Option[T],
+) (Consumer[T], error) {
 	var msg T
 
 	if reflect.ValueOf(msg).Kind() == reflect.Ptr {
 		return Consumer[T]{}, ErrMessageTypeInvalid
 	}
 
-	cfg := Config[T]{
+	cfg := &Config[T]{
 		queueConfig: QueueConfig{
 			PrefetchCount: 128,
 			Workers:       1,
 		},
 		retryCount: 1,
 		serializer: serializer.JSON[T]{},
-		ctx:        context.Background(),
 		onError: func(err error) {
 			if errors.Is(err, connection.ErrRetriesExhausted) {
 				panic(err)
 			}
 		},
-		connectionOptions: connection.DefaultConfig,
+		connectionOptions: connectionOptions,
 		onMessageError:    nil,
 		onListenerStart:   nil,
 		onListenerExit:    nil,
 	}
 
 	for _, o := range options {
-		o(&cfg)
+		o(cfg)
 	}
 
 	if queueDeclare.QueueName == "" {
@@ -68,17 +72,22 @@ func NewRaw[T Message](handler RawHandler, queueDeclare QueueDeclare, options ..
 
 	return Consumer[T]{
 		watcher:      semaphore.NewWeighted(int64(cfg.queueConfig.Workers)),
-		cfg:          &cfg,
+		cfg:          cfg,
 		queueDeclare: &queueDeclare,
 		handler:      handler,
 	}, nil
 }
 
-func NewRawFunc[T Message](h RawHandlerFunc, queueDeclare QueueDeclare, options ...Option[T]) (Consumer[T], error) {
-	return NewRaw(h, queueDeclare, options...)
+func NewRawFunc[T Message](h RawHandlerFunc, connectionOptions connection.Config, queueDeclare QueueDeclare, options ...Option[T]) (Consumer[T], error) {
+	return NewRaw(h, connectionOptions, queueDeclare, options...)
 }
 
-func NewFunc[T Message](h HandlerFunc[T], queueDeclare QueueDeclare, options ...Option[T]) (Consumer[T], error) {
+func NewFunc[T Message](
+	h HandlerFunc[T],
+	connectionOptions connection.Config,
+	queueDeclare QueueDeclare,
+	options ...Option[T],
+) (Consumer[T], error) {
 	cfg := Config[T]{}
 
 	for _, o := range options {
@@ -110,10 +119,15 @@ func NewFunc[T Message](h HandlerFunc[T], queueDeclare QueueDeclare, options ...
 		rawHandler = privHandler
 	}
 
-	return NewRaw(rawHandler, queueDeclare, options...)
+	return NewRaw(rawHandler, connectionOptions, queueDeclare, options...)
 }
 
-func New[T Message](h Handler[T], queueDeclare QueueDeclare, options ...Option[T]) (Consumer[T], error) {
+func New[T Message](
+	h Handler[T],
+	connectionOptions connection.Config,
+	queueDeclare QueueDeclare,
+	options ...Option[T],
+) (Consumer[T], error) {
 	cfg := Config[T]{}
 
 	for _, o := range options {
@@ -145,9 +159,13 @@ func New[T Message](h Handler[T], queueDeclare QueueDeclare, options ...Option[T
 		rawHandler = privHandler
 	}
 
-	return NewRaw(rawHandler, queueDeclare, options...)
+	return NewRaw(rawHandler, connectionOptions, queueDeclare, options...)
+}
+
+func (c Consumer[T]) CloseWithContext(ctx context.Context) error {
+	return c.watcher.Acquire(ctx, int64(c.cfg.queueConfig.Workers))
 }
 
 func (c Consumer[T]) Close() error {
-	return c.watcher.Acquire(context.Background(), int64(c.cfg.queueConfig.Workers))
+	return c.CloseWithContext(context.Background())
 }
