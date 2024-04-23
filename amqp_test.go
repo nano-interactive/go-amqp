@@ -167,13 +167,9 @@ func Example_ConsumerWithRawHandler() {
 
 func ExamplePublisher() {
 	pub, err := publisher.New[Message](
+		context.Background(),
+		connection.DefaultConfig,
 		"testing_publisher",
-		publisher.WithConnectionOptions[Message](connection.Config{
-			Host:           "127.0.0.1",
-			User:           "guest",
-			Password:       "guest",
-			ConnectionName: "go-amqp-publisher",
-		}),
 	)
 	if err != nil {
 		panic(err)

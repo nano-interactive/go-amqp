@@ -54,23 +54,25 @@ is places in the library so that the users of the library don't even think about
 
 c, err := consumer.NewFunc(
     handler,
-    consumer.QueueDeclare{QueueName: "testing_queue"},
-    consumer.WithOnMessageError[Message](func(ctx context.Context, d *amqp091.Delivery, err error) {
-        fmt.Fprintf(os.Stderr, "[ERROR] Message error: %s\n", err)
-    }),
-    consumer.WithConnectionOptions[Message](connection.Config{
+    connection.Config{
         Host:              "127.0.0.1",
         Port:              5672,
         User:              "guest",
         Password:          "guest",
         ConnectionName:    "go-amqp-consumer",
+    },
+    consumer.QueueDeclare{QueueName: "testing_queue"},
+    consumer.WithOnMessageError[Message](func(ctx context.Context, d *amqp091.Delivery, err error) {
+        fmt.Fprintf(os.Stderr, "[ERROR] Message error: %s\n", err)
     }),
 )
 
-c.Start(context.Background())
+go c.Start(context.Background())
 
-time.Sleep(100*time.Second)
+// Wait for some event to exit the Consumer
+time.Sleep(30*time.Second)
 
+// c.CloseWithContext(context.Background()) -> for timeouts
 c.Close()
 
 ```
@@ -134,13 +136,14 @@ Publising message is simple, the abstraction is very simple
 
 ```go
 pub, err := publisher.New[Message](
-    "testing_publisher",
-    publisher.WithConnectionOptions[Message](connection.Config{
+    context.TODO(),
+    connection.Config{
         Host:           "127.0.0.1",
         User:           "guest",
         Password:       "guest",
         ConnectionName: "go-amqp-publisher",
-    }),
+    }
+    "testing_publisher",
 )
 if err != nil {
     panic(err)
@@ -156,7 +159,7 @@ message := Message{
     Name: "Nano Interactive",
 }
 
-if err = pub.Publish(context.Background(), message); err != nil {
+if err = pub.Publish(context.TODO(), message); err != nil {
     panic(err)
 }
 

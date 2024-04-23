@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/rabbitmq/amqp091-go"
+	"golang.org/x/sync/semaphore"
 
 	"github.com/nano-interactive/go-amqp/v3/connection"
 	"github.com/nano-interactive/go-amqp/v3/serializer"
@@ -35,10 +35,10 @@ type (
 		serializer   serializer.Serializer[T]
 		conn         *connection.Connection
 		ch           atomic.Pointer[amqp091.Channel]
+		semaphore    *semaphore.Weighted
 		cancel       context.CancelFunc
 		exchangeName string
 		routingKey   string
-		wg           sync.WaitGroup
 		closing      atomic.Bool
 		gettingCh    atomic.Bool
 	}
@@ -77,18 +77,19 @@ func (p *Publisher[T]) swapChannel(connection *amqp091.Connection, cfg Config[T]
 }
 
 func (p *Publisher[T]) connectionReadyWorker(ctx context.Context, conn *amqp091.Connection, notifyClose chan *amqp091.Error, cfg Config[T]) {
-	defer p.wg.Done()
 	errCh := make(chan error)
-	defer close(errCh)
-	var err error
 
 	defer func() {
+		close(errCh)
+		p.semaphore.Release(1)
 		p.closing.Store(true)
 		ch := p.ch.Load()
 		if !ch.IsClosed() {
 			_ = ch.Close()
 		}
 	}()
+
+	var err error
 
 	for {
 		select {
@@ -121,7 +122,10 @@ func (p *Publisher[T]) connectionReadyWorker(ctx context.Context, conn *amqp091.
 
 func (p *Publisher[T]) onConnectionReady(cfg Config[T]) connection.OnConnectionReady {
 	return func(ctx context.Context, connection *amqp091.Connection) error {
-		p.wg.Add(1)
+		if err := p.semaphore.Acquire(ctx, 1); err != nil {
+			return err
+		}
+
 		notifyClose, err := p.swapChannel(connection, cfg)
 		if err != nil {
 			return err
@@ -150,16 +154,14 @@ func newChannel(
 	return ch, notifyClose, nil
 }
 
-func New[T any](exchangeName string, options ...Option[T]) (*Publisher[T], error) {
+func New[T any](ctx context.Context, connectionOpts connection.Config, exchangeName string, options ...Option[T]) (*Publisher[T], error) {
 	if exchangeName == "" {
 		return nil, ErrExchangeNameRequired
 	}
 
 	cfg := Config[T]{
-		serializer:        serializer.JSON[T]{},
-		messageBuffering:  1,
-		connectionOptions: connection.DefaultConfig,
-		ctx:               context.Background(),
+		serializer:       serializer.JSON[T]{},
+		messageBuffering: 1,
 		exchange: ExchangeDeclare{
 			name:       exchangeName,
 			RoutingKey: "",
@@ -183,16 +185,17 @@ func New[T any](exchangeName string, options ...Option[T]) (*Publisher[T], error
 		option(&cfg)
 	}
 
-	ctx, cancel := context.WithCancel(cfg.ctx)
+	ctx, cancel := context.WithCancel(ctx)
 
 	publisher := &Publisher[T]{
 		serializer:   cfg.serializer,
-		cancel:       cancel,
 		exchangeName: exchangeName,
 		routingKey:   cfg.exchange.RoutingKey,
+		semaphore:    semaphore.NewWeighted(1),
+		cancel:       cancel,
 	}
 
-	conn, err := connection.New(ctx, cfg.connectionOptions, connection.Events{
+	conn, err := connection.New(ctx, connectionOpts, connection.Events{
 		OnConnectionReady: publisher.onConnectionReady(cfg),
 		OnBeforeConnectionReady: func(_ context.Context) error {
 			publisher.gettingCh.Store(true)
@@ -205,6 +208,7 @@ func New[T any](exchangeName string, options ...Option[T]) (*Publisher[T], error
 	}
 
 	publisher.conn = conn
+
 	return publisher, nil
 }
 
@@ -239,9 +243,19 @@ func (p *Publisher[T]) Publish(ctx context.Context, msg T, _ ...PublishConfig) e
 	)
 }
 
-func (p *Publisher[T]) Close() error {
+func (p *Publisher[T]) CloseWithContext(ctx context.Context) error {
 	p.closing.Store(true)
 	p.cancel()
-	p.wg.Wait()
-	return p.conn.Close()
+
+	if err := p.semaphore.Acquire(ctx, 1); err != nil {
+		return err
+	}
+
+	defer p.conn.Close()
+
+	return nil
+}
+
+func (p *Publisher[T]) Close() error {
+	return p.CloseWithContext(context.Background())
 }

@@ -30,10 +30,10 @@ func main() {
 
 	ctx := context.Background()
 
-	pub, err := publisher.New(
+	pub, err := publisher.New[Message](
+		ctx,
+		connConfig,
 		"testing_publisher",
-		publisher.WithContext[Message](ctx),
-		publisher.WithConnectionOptions[Message](connConfig),
 	)
 	if err != nil {
 		panic(err)
