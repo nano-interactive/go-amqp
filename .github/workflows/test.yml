@@ -1,4 +1,4 @@
-name: 'Testing'
+name: "Testing"
 
 on:
   workflow_call:
@@ -19,12 +19,12 @@ jobs:
           RABBITMQ_DEFAULT_USER: guest
           RABBITMQ_DEFAULT_PASS: guest
         ports:
-          - '5672:5672'
+          - "5672:5672"
 
     strategy:
       matrix:
-        os: ['ubuntu-latest']
-        go: [ '1.22' ]
+        os: ["ubuntu-latest"]
+        go: ["1.22"]
 
     runs-on: ${{ matrix.os }}
 
@@ -32,13 +32,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
-      - uses: actions/cache@v4
-        with:
-          path: ~/go/pkg/mod
-          key: ${{ runner.os }}-go-tests-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-tests-${{ hashFiles('**/go.sum') }}
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go }}
       - name: Install Task
