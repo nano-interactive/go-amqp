@@ -3,7 +3,7 @@ module github.com/nano-interactive/go-amqp/v3
 go 1.22
 
 require (
-	github.com/rabbitmq/amqp091-go v1.9.0
+	github.com/rabbitmq/amqp091-go v1.10.0
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/sync v0.7.0
 )

@@ -45,7 +45,7 @@ type (
 		ConnectionName    string        `json:"connection_name,omitempty" mapstructure:"connection_name" yaml:"connection_name"`
 		Port              int           `json:"port,omitempty" mapstructure:"port" yaml:"port"`
 		ReconnectRetry    int           `json:"reconnect_retry,omitempty" mapstructure:"reconnect_retry" yaml:"reconnect_retry"`
-		Channels          int           `json:"channels,omitempty" mapstructure:"channels" yaml:"channels"`
+		Channels          uint16        `json:"channels,omitempty" mapstructure:"channels" yaml:"channels"`
 		FrameSize         int           `json:"frame_size,omitempty" mapstructure:"frame_size" yaml:"frame_size"`
 		ReconnectInterval time.Duration `json:"reconnect_interval,omitempty" mapstructure:"reconnect_interval" yaml:"reconnect_interval"`
 	}
