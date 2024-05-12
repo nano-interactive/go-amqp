@@ -126,8 +126,6 @@ func (p *Publisher[T]) onConnectionReady(cfg Config[T]) connection.OnConnectionR
 			return err
 		}
 
-		defer p.semaphore.Release(1)
-
 		notifyClose, err := p.swapChannel(connection, cfg)
 		if err != nil {
 			return err
