@@ -28,6 +28,8 @@ var DefaultConfig = Config{
 
 type (
 	Connection struct {
+		mu                      sync.Mutex
+		base                    context.Context
 		cancel                  context.CancelFunc
 		conn                    atomic.Pointer[amqp091.Connection]
 		config                  *Config
@@ -62,26 +64,33 @@ func New(ctx context.Context, config Config, events Events) (*Connection, error)
 		return nil, ErrOnConnectionReady
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
-
 	c := &Connection{
+		base:                    ctx,
 		config:                  &config,
-		cancel:                  cancel,
 		onBeforeConnectionReady: events.OnBeforeConnectionReady,
 		onConnectionReady:       events.OnConnectionReady,
 		onError:                 events.OnError,
 	}
 
 	c.once = sync.OnceFunc(func() {
+		c.mu.Lock()
 		c.cancel()
+		c.mu.Unlock()
 		c.connectionDispose()
 	})
 
-	return c.reconnect(ctx)
+	return c.reconnect()
 }
 
-func (c *Connection) reconnect(ctx context.Context) (*Connection, error) {
+func (c *Connection) reconnect() (*Connection, error) {
 	connect := c.connect()
+	var ctx context.Context
+	c.mu.Lock()
+	if c.cancel != nil {
+		c.cancel()
+	}
+	ctx, c.cancel = context.WithCancel(c.base)
+	c.mu.Unlock()
 
 	if err := connect(ctx); err == nil {
 		return c, nil
@@ -134,7 +143,7 @@ func (c *Connection) handleReconnect(ctx context.Context, connection *amqp091.Co
 
 			c.connectionDispose()
 
-			if _, err := c.reconnect(ctx); err != nil {
+			if _, err := c.reconnect(); err != nil {
 				return
 			}
 		}
