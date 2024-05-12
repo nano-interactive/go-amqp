@@ -42,5 +42,7 @@ func (c *Consumer[T]) Start(base context.Context) error {
 
 	defer conn.Close()
 
+	<-base.Done()
+
 	return nil
 }
