@@ -66,6 +66,11 @@ func (e ExchangeDeclare) declare(ch *amqp091.Channel) error {
 
 func (p *Publisher[T]) swapChannel(connection *amqp091.Connection, cfg Config[T]) (chan *amqp091.Error, error) {
 	p.gettingCh.Store(true)
+	ch := p.ch.Load()
+	if ch != nil && !ch.IsClosed() {
+		_ = ch.Close()
+	}
+
 	chOrigin, notifyClose, err := newChannel(connection, cfg.exchange)
 	if err != nil {
 		return nil, err
@@ -77,12 +82,10 @@ func (p *Publisher[T]) swapChannel(connection *amqp091.Connection, cfg Config[T]
 }
 
 func (p *Publisher[T]) connectionReadyWorker(ctx context.Context, conn *amqp091.Connection, notifyClose chan *amqp091.Error, cfg Config[T]) {
-	errCh := make(chan error)
+	errCh := make(chan error, 1)
 
 	defer func() {
 		close(errCh)
-		p.semaphore.Release(1)
-		p.closing.Store(true)
 		ch := p.ch.Load()
 		if !ch.IsClosed() {
 			_ = ch.Close()
@@ -101,7 +104,7 @@ func (p *Publisher[T]) connectionReadyWorker(ctx context.Context, conn *amqp091.
 				errCh <- err
 			}
 		case err, ok := <-notifyClose:
-			if !ok {
+			if !ok && p.closing.Load() {
 				return
 			}
 
@@ -109,12 +112,16 @@ func (p *Publisher[T]) connectionReadyWorker(ctx context.Context, conn *amqp091.
 				return
 			}
 
-			p.gettingCh.CompareAndSwap(false, true)
+			for !p.gettingCh.CompareAndSwap(false, true) {
+			}
 
 			// When connection is still open and channel is closed we need to create new channel
 			// and throw away the old one
 			if errors.Is(err, amqp091.ErrClosed) {
-				errCh <- err
+				select {
+				case errCh <- err:
+				default:
+				}
 			}
 		}
 	}
@@ -125,6 +132,8 @@ func (p *Publisher[T]) onConnectionReady(cfg Config[T]) connection.OnConnectionR
 		if err := p.semaphore.Acquire(ctx, 1); err != nil {
 			return err
 		}
+
+		defer p.semaphore.Release(1)
 
 		notifyClose, err := p.swapChannel(connection, cfg)
 		if err != nil {
@@ -184,6 +193,8 @@ func New[T any](ctx context.Context, connectionOpts connection.Config, exchangeN
 	for _, option := range options {
 		option(&cfg)
 	}
+
+	cfg.exchange.name = exchangeName
 
 	ctx, cancel := context.WithCancel(ctx)
 
