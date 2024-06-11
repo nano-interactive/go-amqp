@@ -75,6 +75,7 @@ func (h retryHandler[T]) retry(err error, delivery *amqp091.Delivery) error {
 	_, ok := delivery.Headers[retryHeader]
 
 	if !ok {
+		delivery.Headers = make(amqp091.Table)
 		delivery.Headers[retryHeader] = int64(h.retryCount)
 	}
 
