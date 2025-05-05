@@ -253,7 +253,7 @@ func (c *Connection) connect() func(ctx context.Context) error {
 		config := amqp091.Config{
 			SASL:       nil,
 			Vhost:      c.config.Vhost,
-			ChannelMax: c.config.Channels,
+			ChannelMax: uint16(c.config.Channels),
 			FrameSize:  c.config.FrameSize,
 			Heartbeat:  3 * time.Second,
 			Properties: properties,
