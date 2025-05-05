@@ -321,8 +321,9 @@ func (c *Connection) Close() error {
 	if c.cancel != nil {
 		c.cancel()
 	}
-
+	c.mu.Unlock()
 	c.connectionDispose()
+	c.mu.Lock()
 
 	// Wait for all reconnect goroutines to finish
 	done := make(chan struct{})
