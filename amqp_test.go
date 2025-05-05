@@ -54,6 +54,7 @@ func ExampleConsumer() {
 	if err := c.Close(); err != nil {
 		panic(err)
 	}
+	// Output:
 }
 
 type MyHandler struct{}
@@ -186,4 +187,6 @@ func ExamplePublisher() {
 	if err = pub.Close(); err != nil {
 		panic(err)
 	}
+
+	// Output:
 }

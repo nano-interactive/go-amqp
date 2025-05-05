@@ -16,11 +16,11 @@ import (
 	"github.com/rabbitmq/amqp091-go"
 )
 
-// ConnectionState represents the current state of the connection
-type ConnectionState int32
+// State represents the current state of the connection
+type State int32
 
 const (
-	StateDisconnected ConnectionState = iota
+	StateDisconnected State = iota
 	StateConnecting
 	StateConnected
 	StateReconnecting
@@ -40,6 +40,8 @@ var DefaultConfig = Config{
 	FrameSize:         8192,
 	MaxBackoff:        30 * time.Second,
 }
+
+var ErrTimeoutCleanup = errors.New("timeout waiting for connection cleanup")
 
 type (
 	Connection struct {
@@ -81,8 +83,8 @@ type (
 		Inner error
 	}
 
-	// ConnectionBlockedError represents when the connection is blocked by the broker
-	ConnectionBlockedError struct {
+	// BlockedError represents when the connection is blocked by the broker
+	BlockedError struct {
 		Blocked amqp091.Blocking
 	}
 )
@@ -110,12 +112,12 @@ func New(ctx context.Context, config Config, events Events) (*Connection, error)
 	return c.reconnect()
 }
 
-func (c *Connection) setState(state ConnectionState) {
+func (c *Connection) setState(state State) {
 	c.state.Store(int32(state))
 }
 
-func (c *Connection) getState() ConnectionState {
-	return ConnectionState(c.state.Load())
+func (c *Connection) getState() State {
+	return State(c.state.Load())
 }
 
 // secureJitter returns a random jitter value between -jitter and +jitter using crypto/rand
@@ -226,7 +228,7 @@ func (c *Connection) handleReconnect(ctx context.Context, connection *amqp091.Co
 				return
 			}
 			if c.onError != nil {
-				c.onError(&ConnectionBlockedError{Blocked: blocked})
+				c.onError(&BlockedError{Blocked: blocked})
 			}
 		}
 	}
@@ -253,7 +255,7 @@ func (c *Connection) connect() func(ctx context.Context) error {
 		config := amqp091.Config{
 			SASL:       nil,
 			Vhost:      c.config.Vhost,
-			ChannelMax: uint16(c.config.Channels),
+			ChannelMax: c.config.Channels,
 			FrameSize:  c.config.FrameSize,
 			Heartbeat:  3 * time.Second,
 			Properties: properties,
@@ -337,7 +339,7 @@ func (c *Connection) Close() error {
 	case <-done:
 		return nil
 	case <-time.After(5 * time.Second):
-		return errors.New("timeout waiting for connection cleanup")
+		return ErrTimeoutCleanup
 	}
 }
 
@@ -349,6 +351,6 @@ func (e *ReconnectError) Unwrap() error {
 	return e.Inner
 }
 
-func (e *ConnectionBlockedError) Error() string {
+func (e *BlockedError) Error() string {
 	return fmt.Sprintf("connection blocked: reason=%s, active=%v", e.Blocked.Reason, e.Blocked.Active)
 }
