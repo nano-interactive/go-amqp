@@ -53,9 +53,9 @@ type (
 		onBeforeConnectionReady OnReconnectingFunc
 		onConnectionReady       OnConnectionReady
 		onError                 OnErrorFunc
-		once                    func()
 		state                   atomic.Int32
 		reconnectWg             sync.WaitGroup
+		once                    sync.Once
 	}
 
 	Config struct {
@@ -101,13 +101,6 @@ func New(ctx context.Context, config Config, events Events) (*Connection, error)
 		onConnectionReady:       events.OnConnectionReady,
 		onError:                 events.OnError,
 	}
-
-	c.once = sync.OnceFunc(func() {
-		c.mu.Lock()
-		c.cancel()
-		c.mu.Unlock()
-		c.connectionDispose()
-	})
 
 	return c.reconnect()
 }
@@ -297,8 +290,6 @@ func (c *Connection) connect() func(ctx context.Context) error {
 }
 
 func (c *Connection) connectionDispose() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
 
 	conn := c.conn.Load()
 	if conn == nil || conn.IsClosed() {
@@ -311,36 +302,41 @@ func (c *Connection) connectionDispose() {
 }
 
 func (c *Connection) Close() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	var err error
 
-	if c.getState() == StateClosing {
-		return nil
-	}
+	c.once.Do(func() {
 
-	c.setState(StateClosing)
+		c.mu.Lock()
+		defer c.mu.Unlock()
 
-	if c.cancel != nil {
-		c.cancel()
-	}
-	c.mu.Unlock()
-	c.connectionDispose()
-	c.mu.Lock()
+		if c.getState() == StateClosing {
+			return
+		}
 
-	// Wait for all reconnect goroutines to finish
-	done := make(chan struct{})
-	go func() {
-		c.reconnectWg.Wait()
-		close(done)
-	}()
+		c.setState(StateClosing)
 
-	// Wait with timeout
-	select {
-	case <-done:
-		return nil
-	case <-time.After(5 * time.Second):
-		return ErrTimeoutCleanup
-	}
+		if c.cancel != nil {
+			c.cancel()
+		}
+		c.connectionDispose()
+
+		// Wait for all reconnect goroutines to finish
+		done := make(chan struct{})
+		go func() {
+			c.reconnectWg.Wait()
+			close(done)
+		}()
+
+		// Wait with timeout
+		select {
+		case <-done:
+			return
+		case <-time.After(5 * time.Second):
+			err = ErrTimeoutCleanup
+			return
+		}
+	})
+	return err
 }
 
 func (e *ReconnectError) Error() string {

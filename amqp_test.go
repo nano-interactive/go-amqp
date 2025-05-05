@@ -31,6 +31,7 @@ func handler(_ context.Context, msg Message) error {
 }
 
 func ExampleConsumer() {
+
 	c, err := consumer.NewFunc(handler,
 		connection.DefaultConfig,
 		consumer.QueueDeclare{QueueName: "testing_queue"},
@@ -41,20 +42,26 @@ func ExampleConsumer() {
 	if err != nil {
 		panic(err)
 	}
-
 	go func() {
+		fmt.Println("[INFO] Consumer starting")
+
 		if err := c.Start(context.Background()); err != nil {
 			panic(err)
 		}
 	}()
 
 	fmt.Println("[INFO] Consumer started")
-	time.Sleep(100 * time.Second)
+	time.Sleep(time.Second * 5)
+	fmt.Println("[INFO] Consumer closing")
 
 	if err := c.Close(); err != nil {
 		panic(err)
 	}
+
+	fmt.Println("[INFO] Consumer shut down cleanly")
 	// Output:
+	// [INFO] Consumer started
+	// [INFO] Consumer shut down cleanly
 }
 
 type MyHandler struct{}
@@ -85,11 +92,15 @@ func ExampleConsumerWithHandler() {
 	}()
 
 	fmt.Println("[INFO] Consumer started")
-	time.Sleep(100 * time.Second)
+	time.Sleep(5 * time.Second)
 
 	if err := c.Close(); err != nil {
 		panic(err)
 	}
+
+	// Output:
+	// [INFO] Consumer started
+
 }
 
 func ExampleConsumerWithSignal() {
@@ -124,6 +135,11 @@ func ExampleConsumerWithSignal() {
 	if err := c.Close(); err != nil {
 		panic(err)
 	}
+
+	// Output:
+	// [INFO] Consumer started
+	// [INFO] Signal Received
+
 }
 
 type MyRawHandler struct{}
@@ -159,11 +175,15 @@ func Example_ConsumerWithRawHandler() {
 	}()
 
 	fmt.Println("[INFO] Consumer started")
-	time.Sleep(100 * time.Second)
+	time.Sleep(5 * time.Second)
 
 	if err := c.Close(); err != nil {
 		panic(err)
 	}
+
+	// Output:
+	// [INFO] Consumer started
+
 }
 
 func ExamplePublisher() {
