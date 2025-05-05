@@ -176,7 +176,7 @@
     "**/obj": true,
     "**/TestResults": true
   },
-  "debug.autoExpandLazyVariables": true,
+  "debug.autoExpandLazyVariables": "on",
   "debug.console.closeOnEnd": true,
   "debug.console.acceptSuggestionOnEnter": "on",
   "debug.allowBreakpointsEverywhere": true,

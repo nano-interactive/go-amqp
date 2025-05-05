@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"math/rand"
 	"net"
 	"strconv"
 	"sync"
@@ -11,6 +13,17 @@ import (
 	"time"
 
 	"github.com/rabbitmq/amqp091-go"
+)
+
+// ConnectionState represents the current state of the connection
+type ConnectionState int
+
+const (
+	StateDisconnected ConnectionState = iota
+	StateConnecting
+	StateConnected
+	StateReconnecting
+	StateClosing
 )
 
 var DefaultConfig = Config{
@@ -24,6 +37,7 @@ var DefaultConfig = Config{
 	Channels:          100,
 	ReconnectInterval: 1 * time.Second,
 	FrameSize:         8192,
+	MaxBackoff:        30 * time.Second,
 }
 
 type (
@@ -37,6 +51,8 @@ type (
 		onConnectionReady       OnConnectionReady
 		onError                 OnErrorFunc
 		once                    func()
+		state                   atomic.Int32
+		reconnectWg             sync.WaitGroup
 	}
 
 	Config struct {
@@ -50,12 +66,23 @@ type (
 		Channels          uint16        `json:"channels,omitempty" mapstructure:"channels" yaml:"channels"`
 		FrameSize         int           `json:"frame_size,omitempty" mapstructure:"frame_size" yaml:"frame_size"`
 		ReconnectInterval time.Duration `json:"reconnect_interval,omitempty" mapstructure:"reconnect_interval" yaml:"reconnect_interval"`
+		MaxBackoff        time.Duration `json:"max_backoff,omitempty" mapstructure:"max_backoff" yaml:"max_backoff"`
 	}
 
 	Events struct {
 		OnConnectionReady       OnConnectionReady  `json:"-" mapstructure:"-" yaml:"-"`
 		OnBeforeConnectionReady OnReconnectingFunc `json:"-" mapstructure:"-" yaml:"-"`
 		OnError                 OnErrorFunc        `json:"-" mapstructure:"-" yaml:"-"`
+	}
+
+	// ReconnectError represents an error that occurred during reconnection
+	ReconnectError struct {
+		Inner error
+	}
+
+	// ConnectionBlockedError represents when the connection is blocked by the broker
+	ConnectionBlockedError struct {
+		Blocked amqp091.Blocking
 	}
 )
 
@@ -82,9 +109,18 @@ func New(ctx context.Context, config Config, events Events) (*Connection, error)
 	return c.reconnect()
 }
 
+func (c *Connection) setState(state ConnectionState) {
+	c.state.Store(int32(state))
+}
+
+func (c *Connection) getState() ConnectionState {
+	return ConnectionState(c.state.Load())
+}
+
 func (c *Connection) reconnect() (*Connection, error) {
 	connect := c.connect()
 	var ctx context.Context
+
 	c.mu.Lock()
 	if c.cancel != nil {
 		c.cancel()
@@ -92,28 +128,44 @@ func (c *Connection) reconnect() (*Connection, error) {
 	ctx, c.cancel = context.WithCancel(c.base)
 	c.mu.Unlock()
 
+	// Initial connection attempt
 	if err := connect(ctx); err == nil {
+		c.setState(StateConnected)
 		return c, nil
 	}
 
+	// Start reconnection process
+	c.setState(StateReconnecting)
+
 	var err error
-	timer := time.NewTimer(c.config.ReconnectInterval)
-	defer timer.Stop()
+	backoff := c.config.ReconnectInterval
+	maxBackoff := c.config.MaxBackoff
 
 	for i := 0; i < c.config.ReconnectRetry; i++ {
 		select {
-		case <-timer.C:
+		case <-time.After(backoff):
 			if err = connect(ctx); err == nil {
+				c.setState(StateConnected)
 				return c, nil
 			}
 
-			timer.Reset(c.config.ReconnectInterval)
+			// Exponential backoff with jitter
+			backoff = time.Duration(math.Min(
+				float64(backoff*2),
+				float64(maxBackoff),
+			))
+			// Add jitter (±20%)
+			jitter := time.Duration(float64(backoff) * 0.2)
+			backoff += time.Duration(float64(jitter) * (2*rand.Float64() - 1))
+
 		case <-ctx.Done():
+			c.setState(StateDisconnected)
 			return c, ctx.Err()
 		}
 	}
 
-	return c, err
+	c.setState(StateDisconnected)
+	return c, fmt.Errorf("reconnection failed after %d attempts: %w", c.config.ReconnectRetry, err)
 }
 
 func (c *Connection) hasChannelClosed(err error) bool {
@@ -126,7 +178,11 @@ func (c *Connection) IsClosed() bool {
 }
 
 func (c *Connection) handleReconnect(ctx context.Context, connection *amqp091.Connection) {
-	notifyClose := connection.NotifyClose(make(chan *amqp091.Error))
+	c.reconnectWg.Add(1)
+	defer c.reconnectWg.Done()
+
+	notifyClose := connection.NotifyClose(make(chan *amqp091.Error, 1))
+	notifyBlocked := connection.NotifyBlocked(make(chan amqp091.Blocking, 1))
 
 	for {
 		select {
@@ -142,9 +198,20 @@ func (c *Connection) handleReconnect(ctx context.Context, connection *amqp091.Co
 			}
 
 			c.connectionDispose()
+			c.setState(StateReconnecting)
 
 			if _, err := c.reconnect(); err != nil {
+				if c.onError != nil {
+					c.onError(&ReconnectError{Inner: err})
+				}
 				return
+			}
+		case blocked, ok := <-notifyBlocked:
+			if !ok {
+				return
+			}
+			if c.onError != nil {
+				c.onError(&ConnectionBlockedError{Blocked: blocked})
 			}
 		}
 	}
@@ -166,6 +233,7 @@ func (c *Connection) connect() func(ctx context.Context) error {
 
 	return func(ctx context.Context) error {
 		c.connectionDispose()
+		c.setState(StateConnecting)
 
 		config := amqp091.Config{
 			SASL:       nil,
@@ -182,6 +250,7 @@ func (c *Connection) connect() func(ctx context.Context) error {
 				if c.onError != nil {
 					c.onError(&OnBeforeConnectError{Inner: err})
 				}
+				c.setState(StateDisconnected)
 				return err
 			}
 		}
@@ -189,10 +258,12 @@ func (c *Connection) connect() func(ctx context.Context) error {
 		conn, err := amqp091.DialConfig(connectionURI, config)
 		if err != nil {
 			c.onError(&ConnectInitError{Inner: err})
+			c.setState(StateDisconnected)
 			return err
 		}
 
 		c.conn.Store(conn)
+		c.setState(StateConnected)
 
 		go c.handleReconnect(ctx, conn)
 
@@ -200,7 +271,7 @@ func (c *Connection) connect() func(ctx context.Context) error {
 			if c.onError != nil {
 				c.onError(&ConnectInitError{Inner: err})
 			}
-
+			c.setState(StateDisconnected)
 			return err
 		}
 
@@ -209,8 +280,10 @@ func (c *Connection) connect() func(ctx context.Context) error {
 }
 
 func (c *Connection) connectionDispose() {
-	conn := c.conn.Load()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
+	conn := c.conn.Load()
 	if conn == nil || conn.IsClosed() {
 		return
 	}
@@ -221,7 +294,45 @@ func (c *Connection) connectionDispose() {
 }
 
 func (c *Connection) Close() error {
-	c.once()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
-	return nil
+	if c.getState() == StateClosing {
+		return nil
+	}
+
+	c.setState(StateClosing)
+
+	if c.cancel != nil {
+		c.cancel()
+	}
+
+	c.connectionDispose()
+
+	// Wait for all reconnect goroutines to finish
+	done := make(chan struct{})
+	go func() {
+		c.reconnectWg.Wait()
+		close(done)
+	}()
+
+	// Wait with timeout
+	select {
+	case <-done:
+		return nil
+	case <-time.After(5 * time.Second):
+		return errors.New("timeout waiting for connection cleanup")
+	}
+}
+
+func (e *ReconnectError) Error() string {
+	return fmt.Sprintf("reconnection failed: %v", e.Inner)
+}
+
+func (e *ReconnectError) Unwrap() error {
+	return e.Inner
+}
+
+func (e *ConnectionBlockedError) Error() string {
+	return fmt.Sprintf("connection blocked: reason=%s, active=%v", e.Blocked.Reason, e.Blocked.Active)
 }
