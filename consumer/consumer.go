@@ -3,8 +3,10 @@ package consumer
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"reflect"
+	"time"
 
 	"golang.org/x/sync/semaphore"
 
@@ -163,7 +165,17 @@ func New[T Message](
 }
 
 func (c Consumer[T]) CloseWithContext(ctx context.Context) error {
-	return c.watcher.Acquire(ctx, int64(c.cfg.queueConfig.Workers))
+	// Try to acquire all permits with a timeout
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	if err := c.watcher.Acquire(ctx, int64(c.cfg.queueConfig.Workers)); err != nil {
+		return fmt.Errorf("failed to acquire all watchers: %w", err)
+	}
+
+	// Release all permits to ensure clean state
+	c.watcher.Release(int64(c.cfg.queueConfig.Workers))
+	return nil
 }
 
 func (c Consumer[T]) Close() error {

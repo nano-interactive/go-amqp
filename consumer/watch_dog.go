@@ -7,7 +7,9 @@ import (
 )
 
 func (c *Consumer[T]) watchdogWatcher(ctx context.Context, conn *amqp091.Connection) {
-	defer c.watcher.Release(1)
+	defer func() {
+		c.watcher.Release(1)
+	}()
 
 	l := newListener(
 		c.queueDeclare.QueueName,
@@ -73,11 +75,16 @@ func (c *Consumer[T]) watchdog(
 
 	return func() {
 		for {
-			if err := c.watcher.Acquire(ctx, 1); err != nil {
+			select {
+			case <-ctx.Done():
 				return
-			}
+			default:
+				if err := c.watcher.Acquire(ctx, 1); err != nil {
+					return
+				}
 
-			go c.watchdogWatcher(ctx, conn)
+				go c.watchdogWatcher(ctx, conn)
+			}
 		}
 	}, nil
 }

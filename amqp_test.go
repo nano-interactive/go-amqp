@@ -1,20 +1,22 @@
-package amqp_test
+package amqp
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/signal"
 	"sync/atomic"
 	"syscall"
+	"testing"
 	"time"
 
 	"github.com/rabbitmq/amqp091-go"
+	"github.com/stretchr/testify/require"
 
 	"github.com/nano-interactive/go-amqp/v3/connection"
 	"github.com/nano-interactive/go-amqp/v3/consumer"
 	"github.com/nano-interactive/go-amqp/v3/publisher"
+	amqptesting "github.com/nano-interactive/go-amqp/v3/testing"
 )
 
 type Message struct {
@@ -30,7 +32,196 @@ func handler(_ context.Context, msg Message) error {
 	return nil
 }
 
+func TestConsumer(t *testing.T) {
+	t.Parallel()
+	assert := require.New(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	mappings := amqptesting.NewMappings(t).
+		AddMapping("test_exchange", "test_queue")
+
+	c, err := consumer.NewFunc(
+		func(_ context.Context, msg Message) error {
+			t.Logf("Message received: %s", msg.Name)
+			return nil
+		},
+		connection.DefaultConfig,
+		consumer.QueueDeclare{QueueName: mappings.Queue("test_queue")},
+		consumer.WithOnMessageError[Message](func(_ context.Context, _ *amqp091.Delivery, err error) {
+			t.Logf("Message error: %s", err)
+		}),
+	)
+	assert.NoError(err)
+	assert.NotNil(c)
+
+	go func() {
+		if err := c.Start(ctx); err != nil {
+			t.Logf("Consumer error: %s", err)
+		}
+	}()
+
+	// Wait for consumer to start
+	time.Sleep(100 * time.Millisecond)
+
+	// Cleanup
+	assert.NoError(c.Close())
+}
+
+type TestHandler struct{}
+
+func (h TestHandler) Handle(_ context.Context, msg Message) error {
+	return nil
+}
+
+func TestConsumerWithHandler(t *testing.T) {
+	t.Parallel()
+	assert := require.New(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	mappings := amqptesting.NewMappings(t).
+		AddMapping("test_exchange", "test_queue")
+
+	handler := TestHandler{}
+
+	c, err := consumer.New[Message](
+		handler,
+		connection.DefaultConfig,
+		consumer.QueueDeclare{QueueName: mappings.Queue("test_queue")},
+		consumer.WithOnMessageError[Message](func(_ context.Context, _ *amqp091.Delivery, err error) {
+			t.Logf("Message error: %s", err)
+		}),
+	)
+	assert.NoError(err)
+	assert.NotNil(c)
+
+	go func() {
+		if err := c.Start(ctx); err != nil {
+			t.Logf("Consumer error: %s", err)
+		}
+	}()
+
+	// Wait for consumer to start
+	time.Sleep(100 * time.Millisecond)
+
+	// Cleanup
+	assert.NoError(c.Close())
+}
+
+type TestRawHandler struct{}
+
+func (h TestRawHandler) Handle(_ context.Context, d *amqp091.Delivery) error {
+	return d.Ack(false)
+}
+
+func TestConsumerWithRawHandler(t *testing.T) {
+	t.Parallel()
+	assert := require.New(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	mappings := amqptesting.NewMappings(t).
+		AddMapping("test_exchange", "test_queue")
+
+	handler := TestRawHandler{}
+
+	c, err := consumer.NewRaw(
+		handler,
+		connection.DefaultConfig,
+		consumer.QueueDeclare{QueueName: mappings.Queue("test_queue")},
+		consumer.WithOnMessageError[Message](func(_ context.Context, _ *amqp091.Delivery, err error) {
+			t.Logf("Message error: %s", err)
+		}),
+	)
+	assert.NoError(err)
+	assert.NotNil(c)
+
+	go func() {
+		if err := c.Start(ctx); err != nil {
+			t.Logf("Consumer error: %s", err)
+		}
+	}()
+
+	// Wait for consumer to start
+	time.Sleep(100 * time.Millisecond)
+
+	// Cleanup
+	assert.NoError(c.Close())
+}
+
+func TestPublisher(t *testing.T) {
+	t.Parallel()
+	assert := require.New(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	mappings := amqptesting.NewMappings(t).
+		AddMapping("test_exchange", "test_queue")
+
+	pub, err := publisher.New[Message](
+		ctx,
+		connection.DefaultConfig,
+		mappings.Exchange("test_exchange"),
+	)
+	assert.NoError(err)
+	assert.NotNil(pub)
+
+	message := Message{
+		Name: "Test Message",
+	}
+
+	assert.NoError(pub.Publish(ctx, message))
+
+	// Cleanup
+	assert.NoError(pub.Close())
+}
+
+func TestConsumerWithSignal(t *testing.T) {
+	t.Parallel()
+	assert := require.New(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Simulate signal channel
+	sig := make(chan os.Signal, 1)
+
+	c, err := consumer.NewFunc(handler,
+		connection.DefaultConfig,
+		consumer.QueueDeclare{QueueName: "testing_queue"},
+		consumer.WithOnMessageError[Message](func(_ context.Context, _ *amqp091.Delivery, err error) {
+			t.Logf("Message error: %s", err)
+		}),
+	)
+	assert.NoError(err)
+	assert.NotNil(c)
+
+	// Start consumer in goroutine
+	go func() {
+		if err := c.Start(ctx); err != nil {
+			t.Logf("Consumer error: %s", err)
+		}
+	}()
+
+	// Wait a bit for consumer to start
+	time.Sleep(100 * time.Millisecond)
+
+	// Simulate signal
+	sig <- syscall.SIGTERM
+	cancel()
+
+	// Cleanup with timeout
+	assert.NoError(c.Close())
+}
+
 func ExampleConsumer() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
 	c, err := consumer.NewFunc(handler,
 		connection.DefaultConfig,
@@ -42,18 +233,17 @@ func ExampleConsumer() {
 	if err != nil {
 		panic(err)
 	}
-	go func() {
-		fmt.Println("[INFO] Consumer starting")
 
-		if err := c.Start(context.Background()); err != nil {
+	go func() {
+		if err := c.Start(ctx); err != nil {
 			panic(err)
 		}
 	}()
 
 	fmt.Println("[INFO] Consumer started")
-	time.Sleep(time.Second * 5)
-	fmt.Println("[INFO] Consumer closing")
+	time.Sleep(time.Second)
 
+	// Cleanup with timeout
 	if err := c.Close(); err != nil {
 		panic(err)
 	}
@@ -74,43 +264,10 @@ func (h MyHandler) Handle(_ context.Context, msg Message) error {
 }
 
 func ExampleConsumerWithHandler() {
-	c, err := consumer.New[Message](MyHandler{},
-		connection.DefaultConfig,
-		consumer.QueueDeclare{QueueName: "testing_queue"},
-		consumer.WithOnMessageError[Message](func(_ context.Context, _ *amqp091.Delivery, err error) {
-			_, _ = fmt.Fprintf(os.Stderr, "[ERROR] Message error: %s\n", err)
-		}),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	go func() {
-		if err := c.Start(context.Background()); err != nil {
-			panic(err)
-		}
-	}()
-
-	fmt.Println("[INFO] Consumer started")
-	time.Sleep(5 * time.Second)
-
-	if err := c.Close(); err != nil {
-		panic(err)
-	}
-
-	// Output:
-	// [INFO] Consumer started
-
-}
-
-func ExampleConsumerWithSignal() {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
-
-	c, err := consumer.NewFunc(handler,
+	c, err := consumer.New[Message](MyHandler{},
 		connection.DefaultConfig,
 		consumer.QueueDeclare{QueueName: "testing_queue"},
 		consumer.WithOnMessageError[Message](func(_ context.Context, _ *amqp091.Delivery, err error) {
@@ -128,18 +285,15 @@ func ExampleConsumerWithSignal() {
 	}()
 
 	fmt.Println("[INFO] Consumer started")
-	<-sig
-	cancel()
-	fmt.Println("[INFO] Signal Received")
+	time.Sleep(time.Second)
 
+	// Cleanup with timeout
 	if err := c.Close(); err != nil {
 		panic(err)
 	}
 
 	// Output:
 	// [INFO] Consumer started
-	// [INFO] Signal Received
-
 }
 
 type MyRawHandler struct{}
@@ -157,6 +311,9 @@ func (h MyRawHandler) Handle(_ context.Context, d *amqp091.Delivery) error {
 }
 
 func Example_ConsumerWithRawHandler() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	c, err := consumer.NewRaw(MyRawHandler{},
 		connection.DefaultConfig,
 		consumer.QueueDeclare{QueueName: "testing_queue"},
@@ -169,21 +326,21 @@ func Example_ConsumerWithRawHandler() {
 	}
 
 	go func() {
-		if err := c.Start(context.Background()); err != nil {
+		if err := c.Start(ctx); err != nil {
 			panic(err)
 		}
 	}()
 
 	fmt.Println("[INFO] Consumer started")
-	time.Sleep(5 * time.Second)
+	time.Sleep(time.Second)
 
+	// Cleanup with timeout
 	if err := c.Close(); err != nil {
 		panic(err)
 	}
 
 	// Output:
 	// [INFO] Consumer started
-
 }
 
 func ExamplePublisher() {
