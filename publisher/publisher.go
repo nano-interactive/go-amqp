@@ -112,7 +112,9 @@ func (p *Publisher[T]) connectionReadyWorker(ctx context.Context, conn *amqp091.
 				return
 			}
 
+			//nolint
 			for !p.gettingCh.CompareAndSwap(false, true) {
+				// Wait for the channel to be available
 			}
 
 			// When connection is still open and channel is closed we need to create new channel

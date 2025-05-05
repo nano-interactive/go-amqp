@@ -1,5 +1,3 @@
-version: 2.1.6
-
 run:
   concurrency: 16
   timeout: 5m
@@ -8,12 +6,6 @@ run:
   go: '1.22'
   modules-download-mode: mod
   allow-parallel-runners: true
-  deadline: 5m
-  skip-dirs:
-    - vendor
-  skip-files:
-    - ".*\\.pb\\.go$"
-    - ".*\\.gen\\.go$"
 
 output:
   print-issued-lines: true
@@ -51,6 +43,7 @@ linters:
     - goprintffuncname
     - gosec
     - gosimple
+    - gosmopolitan
     - govet
     - grouper
     - importas
@@ -59,6 +52,7 @@ linters:
     - loggercheck
     - maintidx
     - makezero
+    - mirror
     - misspell
     - nakedret
     - nestif
@@ -89,39 +83,6 @@ linters:
     - usestdlibvars
     - wastedassign
     - whitespace
-
-linters-settings:
-  govet:
-    check-shadowing: true
-  golint:
-    min-confidence: 0
-  gocyclo:
-    min-complexity: 15
-  maligned:
-    suggest-new: true
-  dupl:
-    threshold: 100
-  goconst:
-    min-len: 2
-    min-occurrences: 2
-  misspell:
-    locale: US
-
-issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - dupl
-        - gocyclo
-        - gosec
-        - goconst
-        - scopelint
-        - nakedret
-        - interfacer
-        - maligned
-        - gocritic
-        - gosimple
-        - staticcheck
-        - stylecheck
-        - unused
-        - varcheck
+    - zerologlint
+    - prealloc
+    - perfsprint

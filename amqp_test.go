@@ -1,4 +1,4 @@
-package amqp
+package amqp_test
 
 import (
 	"context"
@@ -71,7 +71,7 @@ func TestConsumer(t *testing.T) {
 
 type TestHandler struct{}
 
-func (h TestHandler) Handle(_ context.Context, msg Message) error {
+func (h TestHandler) Handle(_ context.Context, _ Message) error {
 	return nil
 }
 
@@ -263,7 +263,8 @@ func (h MyHandler) Handle(_ context.Context, msg Message) error {
 	return nil
 }
 
-func ExampleConsumerWithHandler() {
+// nolint
+func Example_ConsumerWithHandler() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -310,6 +311,7 @@ func (h MyRawHandler) Handle(_ context.Context, d *amqp091.Delivery) error {
 	return d.Ack(false)
 }
 
+// nolint
 func Example_ConsumerWithRawHandler() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

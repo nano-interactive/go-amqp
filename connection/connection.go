@@ -290,7 +290,6 @@ func (c *Connection) connect() func(ctx context.Context) error {
 }
 
 func (c *Connection) connectionDispose() {
-
 	conn := c.conn.Load()
 	if conn == nil || conn.IsClosed() {
 		return
@@ -305,7 +304,6 @@ func (c *Connection) Close() error {
 	var err error
 
 	c.once.Do(func() {
-
 		c.mu.Lock()
 		defer c.mu.Unlock()
 
