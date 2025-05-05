@@ -1,12 +1,14 @@
 module github.com/nano-interactive/go-amqp/v3
 
-go 1.22
+go 1.23.0
+
+toolchain go1.23.8
 
 require (
 	github.com/nano-interactive/go-amqp v1.0.1
 	github.com/rabbitmq/amqp091-go v1.10.0
-	github.com/stretchr/testify v1.9.0
-	golang.org/x/sync v0.7.0
+	github.com/stretchr/testify v1.10.0
+	golang.org/x/sync v0.13.0
 )
 
 require (
