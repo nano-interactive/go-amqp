@@ -43,7 +43,6 @@ linters:
     - goprintffuncname
     - gosec
     - gosimple
-    - gosmopolitan
     - govet
     - grouper
     - importas
@@ -52,7 +51,6 @@ linters:
     - loggercheck
     - maintidx
     - makezero
-    - mirror
     - misspell
     - nakedret
     - nestif
@@ -83,6 +81,3 @@ linters:
     - usestdlibvars
     - wastedassign
     - whitespace
-    - zerologlint
-    - prealloc
-    - perfsprint
