@@ -2,10 +2,11 @@ package connection
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
-	"math/rand"
 	"net"
 	"strconv"
 	"sync"
@@ -16,7 +17,7 @@ import (
 )
 
 // ConnectionState represents the current state of the connection
-type ConnectionState int
+type ConnectionState int32
 
 const (
 	StateDisconnected ConnectionState = iota
@@ -117,6 +118,20 @@ func (c *Connection) getState() ConnectionState {
 	return ConnectionState(c.state.Load())
 }
 
+// secureJitter returns a random jitter value between -jitter and +jitter using crypto/rand
+func secureJitter(jitter time.Duration) time.Duration {
+	var buf [8]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		// If we can't get random bytes, return 0 jitter
+		return 0
+	}
+	// Convert to float64 between 0 and 1
+	f := float64(binary.BigEndian.Uint64(buf[:])) / float64(uint64(1<<63))
+	// Convert to range [-1, 1]
+	f = (f * 2) - 1
+	return time.Duration(float64(jitter) * f)
+}
+
 func (c *Connection) reconnect() (*Connection, error) {
 	connect := c.connect()
 	var ctx context.Context
@@ -149,14 +164,14 @@ func (c *Connection) reconnect() (*Connection, error) {
 				return c, nil
 			}
 
-			// Exponential backoff with jitter
+			// Exponential backoff with secure jitter
 			backoff = time.Duration(math.Min(
 				float64(backoff*2),
 				float64(maxBackoff),
 			))
 			// Add jitter (±20%)
 			jitter := time.Duration(float64(backoff) * 0.2)
-			backoff += time.Duration(float64(jitter) * (2*rand.Float64() - 1))
+			backoff += secureJitter(jitter)
 
 		case <-ctx.Done():
 			c.setState(StateDisconnected)
