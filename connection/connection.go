@@ -29,8 +29,8 @@ const (
 
 var DefaultConfig = Config{
 	Host:              "127.0.0.1",
-	User:              "nano",
-	Password:          "admin",
+	User:              "guest",
+	Password:          "guest",
 	Vhost:             "/",
 	Port:              5672,
 	ConnectionName:    "go-amqp",
