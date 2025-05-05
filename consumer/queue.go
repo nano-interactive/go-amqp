@@ -2,6 +2,7 @@ package consumer
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/nano-interactive/go-amqp/v3/connection"
 	"github.com/rabbitmq/amqp091-go"
@@ -38,7 +39,12 @@ func (c *Consumer[T]) Start(base context.Context) error {
 		return err
 	}
 
-	defer conn.Close()
+	defer func(conn *connection.Connection) {
+		err := conn.Close()
+		if err != nil {
+			fmt.Println(err.Error())
+		}
+	}(conn)
 
 	<-base.Done()
 

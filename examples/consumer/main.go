@@ -74,7 +74,7 @@ func main() {
 	_, _ = fmt.Println("[INFO] Consumer started")
 	<-sig
 	cancel()
-	_, _ = fmt.Println("[INFO] Signal Recieved")
+	_, _ = fmt.Println("[INFO] Signal Received")
 
 	if err := c.Close(); err != nil {
 		panic(err)

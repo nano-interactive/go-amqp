@@ -264,7 +264,12 @@ func (p *Publisher[T]) CloseWithContext(ctx context.Context) error {
 		return err
 	}
 
-	defer p.conn.Close()
+	defer func(conn *connection.Connection) {
+		err := conn.Close()
+		if err != nil {
+			fmt.Println("[ERROR] closing connection:", err)
+		}
+	}(p.conn)
 
 	return nil
 }

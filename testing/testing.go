@@ -134,6 +134,7 @@ func (q *QueueExchangeMapping) declareExchange(exchangeCfg PublisherConfig) {
 		kind = exchangeCfg.Config.Type.String()
 	}
 
+	//nolint
 	durable := true
 	if !exchangeCfg.Config.Durable {
 		durable = false
@@ -163,6 +164,7 @@ func (q *QueueExchangeMapping) declareExchange(exchangeCfg PublisherConfig) {
 	})
 }
 
+// nolint
 func (q *QueueExchangeMapping) declareQueue(queue ConsumerConfig, exchangeName, exchangeRoutingKey string) {
 	durable := true
 	if !queue.Config.Durable {

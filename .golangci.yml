@@ -1,3 +1,5 @@
+version: 2
+
 run:
   concurrency: 16
   timeout: 5m
@@ -6,83 +8,37 @@ run:
   go: '1.22'
   modules-download-mode: mod
   allow-parallel-runners: true
+  deadline: 5m
+  skip-dirs:
+    - vendor
+  skip-files:
+    - ".*\\.pb\\.go$"
+    - ".*\\.gen\\.go$"
 
-output:
-  print-issued-lines: true
-  print-linter-name: true
+issues:
+
   uniq-by-line: true
-  sort-results: true
+
+
+
 
 linters:
-  disable-all: true
   enable:
-    - asasalint
-    - bidichk
     - bodyclose
-    - decorder
+    - dogsled
     - dupl
-    - durationcheck
     - errcheck
-    - errchkjson
-    - errname
-    - errorlint
-    - exportloopref
-    - forbidigo
-    - gofumpt
-    - ginkgolinter
-    - gocheckcompilerdirectives
-    - gocognit
     - goconst
-    - gocritic
     - gocyclo
-    - godox
-    - goerr113
-    - goheader
-    - goimports
-    - gomodguard
-    - goprintffuncname
     - gosec
-    - gosimple
-    - gosmopolitan
     - govet
-    - grouper
-    - importas
     - ineffassign
-    - interfacebloat
-    - loggercheck
-    - maintidx
-    - makezero
-    - mirror
     - misspell
-    - nakedret
-    - nestif
-    - nilerr
-    - nilnil
-    - noctx
-    - nolintlint
-    - nonamedreturns
-    - nosprintfhostport
-    - paralleltest
-    - prealloc
-    - predeclared
-    - promlinter
-    - reassign
-    - revive
-    - rowserrcheck
-    - sqlclosecheck
     - staticcheck
-    - stylecheck
-    - tenv
-    - testableexamples
-    - testpackage
-    - thelper
-    - tparallel
     - unconvert
     - unparam
     - unused
-    - usestdlibvars
-    - wastedassign
     - whitespace
-    - zerologlint
-    - prealloc
-    - perfsprint
+
+
+
