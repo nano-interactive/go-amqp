@@ -102,7 +102,11 @@ func New(ctx context.Context, config Config, events Events) (*Connection, error)
 		onError:                 events.OnError,
 	}
 
-	return c.reconnect()
+	conn, err := c.reconnect()
+	if err != nil {
+		return nil, err
+	}
+	return conn, nil
 }
 
 func (c *Connection) setState(state State) {
@@ -159,6 +163,11 @@ func (c *Connection) reconnect() (*Connection, error) {
 				return c, nil
 			}
 
+			// Call onError for each failed attempt
+			if c.onError != nil {
+				c.onError(err)
+			}
+
 			// Exponential backoff with secure jitter
 			backoff = time.Duration(math.Min(
 				float64(backoff*2),
@@ -169,13 +178,17 @@ func (c *Connection) reconnect() (*Connection, error) {
 			backoff += secureJitter(jitter)
 
 		case <-ctx.Done():
-			c.setState(StateDisconnected)
+			c.setState(StateClosing)
 			return c, ctx.Err()
 		}
 	}
 
+	// Final error after all retries
+	if c.onError != nil {
+		c.onError(err)
+	}
 	c.setState(StateDisconnected)
-	return c, fmt.Errorf("reconnection failed after %d attempts: %w", c.config.ReconnectRetry, err)
+	return c, err // Return the original error without wrapping
 }
 
 func (c *Connection) hasChannelClosed(err error) bool {
@@ -197,6 +210,7 @@ func (c *Connection) handleReconnect(ctx context.Context, connection *amqp091.Co
 	for {
 		select {
 		case <-ctx.Done():
+			c.setState(StateClosing)
 			return
 		case amqpErr, ok := <-notifyClose:
 			if !ok {
@@ -207,12 +221,19 @@ func (c *Connection) handleReconnect(ctx context.Context, connection *amqp091.Co
 				continue
 			}
 
-			c.connectionDispose()
-			c.setState(StateReconnecting)
+			// First notify about the error
+			if c.onError != nil {
+				c.onError(amqpErr)
+			}
 
+			// Then update state and dispose
+			c.setState(StateReconnecting)
+			c.connectionDispose()
+
+			// Attempt to reconnect
 			if _, err := c.reconnect(); err != nil {
 				if c.onError != nil {
-					c.onError(&ReconnectError{Inner: err})
+					c.onError(err)
 				}
 				return
 			}
@@ -267,7 +288,9 @@ func (c *Connection) connect() func(ctx context.Context) error {
 
 		conn, err := amqp091.DialConfig(connectionURI, config)
 		if err != nil {
-			c.onError(&ConnectInitError{Inner: err})
+			if c.onError != nil {
+				c.onError(&ConnectInitError{Inner: err})
+			}
 			c.setState(StateDisconnected)
 			return err
 		}
@@ -295,8 +318,25 @@ func (c *Connection) connectionDispose() {
 		return
 	}
 
+	// Create a channel to wait for the connection to close
+	closeChan := make(chan *amqp091.Error, 1)
+	conn.NotifyClose(closeChan)
+
+	// Close the connection
 	if err := conn.Close(); err != nil && c.onError != nil {
-		c.onError(&OnConnectionCloseError{Inner: err})
+		c.onError(err)
+	}
+
+	// Wait for the close notification
+	select {
+	case amqpErr := <-closeChan:
+		if amqpErr != nil && c.onError != nil {
+			c.onError(amqpErr)
+		}
+	case <-time.After(5 * time.Second):
+		if c.onError != nil {
+			c.onError(errors.New("timeout waiting for connection to close"))
+		}
 	}
 }
 
