@@ -347,10 +347,6 @@ func (c *Connection) Close() error {
 		c.mu.Lock()
 		defer c.mu.Unlock()
 
-		if c.getState() == StateClosing {
-			return
-		}
-
 		c.setState(StateClosing)
 
 		if c.cancel != nil {
