@@ -33,3 +33,23 @@ func (e ConnectInitError) Error() string {
 func (e OnConnectionCloseError) Error() string {
 	return fmt.Sprintf("error on closing previous connection: %v", e.Inner)
 }
+
+func (e *ReconnectError) Error() string {
+	return fmt.Sprintf("reconnection failed: %v", e.Inner)
+}
+
+func (e *ReconnectError) Unwrap() error {
+	return e.Inner
+}
+
+func (e *BlockedError) Error() string {
+	return fmt.Sprintf("connection blocked: reason=%s, active=%v", e.Blocked.Reason, e.Blocked.Active)
+}
+
+func (e *OnBeforeConnectError) Unwrap() error {
+	return e.Inner
+}
+
+func (e *ConnectInitError) Unwrap() error {
+	return e.Inner
+}

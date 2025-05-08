@@ -27,6 +27,24 @@ const (
 	StateClosing
 )
 
+// String returns the string representation of the connection state
+func (s State) String() string {
+	switch s {
+	case StateDisconnected:
+		return "disconnected"
+	case StateConnecting:
+		return "connecting"
+	case StateConnected:
+		return "connected"
+	case StateReconnecting:
+		return "reconnecting"
+	case StateClosing:
+		return "closing"
+	default:
+		return "unknown"
+	}
+}
+
 var DefaultConfig = Config{
 	Host:              "127.0.0.1",
 	User:              "guest",
@@ -41,7 +59,9 @@ var DefaultConfig = Config{
 	MaxBackoff:        30 * time.Second,
 }
 
-var ErrTimeoutCleanup = errors.New("timeout waiting for connection cleanup")
+var (
+	ErrTimeoutCleanup = errors.New("timeout waiting for connection cleanup")
+)
 
 type (
 	Connection struct {
@@ -109,10 +129,12 @@ func New(ctx context.Context, config Config, events Events) (*Connection, error)
 	return conn, nil
 }
 
+// setState updates the connection state in a thread-safe manner
 func (c *Connection) setState(state State) {
 	c.state.Store(int32(state))
 }
 
+// getState returns the current connection state in a thread-safe manner
 func (c *Connection) getState() State {
 	return State(c.state.Load())
 }
@@ -131,6 +153,7 @@ func secureJitter(jitter time.Duration) time.Duration {
 	return time.Duration(float64(jitter) * f)
 }
 
+// reconnect attempts to establish a connection with exponential backoff
 func (c *Connection) reconnect() (*Connection, error) {
 	connect := c.connect()
 	var ctx context.Context
@@ -163,19 +186,13 @@ func (c *Connection) reconnect() (*Connection, error) {
 				return c, nil
 			}
 
-			// Call onError for each failed attempt
+			// Notify about the failed attempt
 			if c.onError != nil {
 				c.onError(err)
 			}
 
-			// Exponential backoff with secure jitter
-			backoff = time.Duration(math.Min(
-				float64(backoff*2),
-				float64(maxBackoff),
-			))
-			// Add jitter (±20%)
-			jitter := time.Duration(float64(backoff) * 0.2)
-			backoff += secureJitter(jitter)
+			// Calculate next backoff with exponential increase and jitter
+			backoff = c.calculateNextBackoff(backoff, maxBackoff)
 
 		case <-ctx.Done():
 			c.setState(StateClosing)
@@ -188,7 +205,20 @@ func (c *Connection) reconnect() (*Connection, error) {
 		c.onError(err)
 	}
 	c.setState(StateDisconnected)
-	return c, err // Return the original error without wrapping
+	return c, err
+}
+
+// calculateNextBackoff calculates the next backoff duration with exponential increase and jitter
+func (c *Connection) calculateNextBackoff(current, max time.Duration) time.Duration {
+	// Exponential backoff
+	next := time.Duration(math.Min(
+		float64(current*2),
+		float64(max),
+	))
+
+	// Add jitter (±20%)
+	jitter := time.Duration(float64(next) * 0.2)
+	return next + secureJitter(jitter)
 }
 
 func (c *Connection) hasChannelClosed(err error) bool {
@@ -312,28 +342,36 @@ func (c *Connection) connect() func(ctx context.Context) error {
 	}
 }
 
+// connectionDispose safely closes the current connection and notifies about any errors
 func (c *Connection) connectionDispose() {
 	conn := c.conn.Load()
 	if conn == nil || conn.IsClosed() {
 		return
 	}
 
-	// Create a channel to wait for the connection to close
+	// Set up close notification
 	closeChan := make(chan *amqp091.Error, 1)
 	conn.NotifyClose(closeChan)
 
-	// Close the connection
+	// Attempt to close the connection
 	if err := conn.Close(); err != nil && c.onError != nil {
 		c.onError(err)
 	}
 
-	// Wait for the close notification
+	// Wait for close confirmation or timeout
+	c.waitForClose(closeChan)
+}
+
+// waitForClose waits for the connection to close or times out
+func (c *Connection) waitForClose(closeChan chan *amqp091.Error) {
+	const closeTimeout = 5 * time.Second
+
 	select {
 	case amqpErr := <-closeChan:
 		if amqpErr != nil && c.onError != nil {
 			c.onError(amqpErr)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(closeTimeout):
 		if c.onError != nil {
 			c.onError(errors.New("timeout waiting for connection to close"))
 		}
@@ -371,16 +409,4 @@ func (c *Connection) Close() error {
 		}
 	})
 	return err
-}
-
-func (e *ReconnectError) Error() string {
-	return fmt.Sprintf("reconnection failed: %v", e.Inner)
-}
-
-func (e *ReconnectError) Unwrap() error {
-	return e.Inner
-}
-
-func (e *BlockedError) Error() string {
-	return fmt.Sprintf("connection blocked: reason=%s, active=%v", e.Blocked.Reason, e.Blocked.Active)
 }
