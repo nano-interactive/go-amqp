@@ -166,7 +166,7 @@ func New[T Message](
 
 func (c Consumer[T]) CloseWithContext(ctx context.Context) error {
 	// Try to acquire all permits with a timeout
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	if err := c.watcher.Acquire(ctx, int64(c.cfg.queueConfig.Workers)); err != nil {

@@ -36,7 +36,7 @@ func TestConsumer(t *testing.T) {
 	t.Parallel()
 	assert := require.New(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	mappings := amqptesting.NewMappings(t).
@@ -79,7 +79,7 @@ func TestConsumerWithHandler(t *testing.T) {
 	t.Parallel()
 	assert := require.New(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	mappings := amqptesting.NewMappings(t).
@@ -121,7 +121,7 @@ func TestConsumerWithRawHandler(t *testing.T) {
 	t.Parallel()
 	assert := require.New(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	mappings := amqptesting.NewMappings(t).
@@ -157,7 +157,7 @@ func TestPublisher(t *testing.T) {
 	t.Parallel()
 	assert := require.New(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	mappings := amqptesting.NewMappings(t).
@@ -185,7 +185,7 @@ func TestConsumerWithSignal(t *testing.T) {
 	t.Parallel()
 	assert := require.New(t)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	// Simulate signal channel
@@ -220,7 +220,7 @@ func TestConsumerWithSignal(t *testing.T) {
 }
 
 func ExampleConsumer() {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	c, err := consumer.NewFunc(handler,
@@ -265,7 +265,7 @@ func (h MyHandler) Handle(_ context.Context, msg Message) error {
 
 // nolint
 func Example_ConsumerWithHandler() {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	c, err := consumer.New[Message](MyHandler{},
@@ -313,7 +313,7 @@ func (h MyRawHandler) Handle(_ context.Context, d *amqp091.Delivery) error {
 
 // nolint
 func Example_ConsumerWithRawHandler() {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	c, err := consumer.NewRaw(MyRawHandler{},

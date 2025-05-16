@@ -364,7 +364,7 @@ func (c *Connection) connectionDispose() {
 
 // waitForClose waits for the connection to close or times out
 func (c *Connection) waitForClose(closeChan chan *amqp091.Error) {
-	const closeTimeout = 5 * time.Second
+	const closeTimeout = 10 * time.Second
 
 	select {
 	case amqpErr := <-closeChan:
@@ -403,7 +403,7 @@ func (c *Connection) Close() error {
 		select {
 		case <-done:
 			return
-		case <-time.After(5 * time.Second):
+		case <-time.After(10 * time.Second):
 			err = ErrTimeoutCleanup
 			return
 		}
