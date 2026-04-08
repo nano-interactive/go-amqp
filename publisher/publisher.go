@@ -198,7 +198,8 @@ func New[T any](ctx context.Context, connectionOpts connection.Config, exchangeN
 
 	cfg.exchange.name = exchangeName
 
-	ctx, cancel := context.WithCancel(ctx) //nolint:govet // cancel stored in publisher.cancel and called in Close
+	// cancel stored in publisher.cancel and called in Close
+	ctx, cancel := context.WithCancel(ctx) // #nosec
 
 	publisher := &Publisher[T]{
 		serializer:   cfg.serializer,
