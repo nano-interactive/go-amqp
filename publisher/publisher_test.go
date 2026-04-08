@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nano-interactive/go-amqp/v3/connection"
+	"github.com/nano-interactive/go-amqp/v3/consumer"
 	"github.com/nano-interactive/go-amqp/v3/publisher"
 	"github.com/nano-interactive/go-amqp/v3/serializer"
 	amqp_testing "github.com/nano-interactive/go-amqp/v3/testing"
@@ -192,6 +193,123 @@ func TestPublisherPublish(t *testing.T) {
 		assert.Len(messages, 0)
 		mockSerializer.AssertNotCalled(t, "GetContentType")
 		mockSerializer.AssertExpectations(t)
+	})
+
+	t.Run("WithRoutingKey_Default", func(t *testing.T) {
+		t.Parallel()
+
+		mappings := amqp_testing.NewMappings(t, connection.DefaultConfig).
+			AddMappings(
+				amqp_testing.PublisherConfig{
+					Name: "test_exchange_rk_default",
+					Config: publisher.ExchangeDeclare{
+						RoutingKey: "rk.default",
+						Type:       publisher.ExchangeTypeDirect,
+						Durable:    true,
+					},
+				},
+				[]amqp_testing.ConsumerConfig{
+					{
+						Name: "test_queue_rk_default",
+						Config: consumer.QueueDeclare{
+							QueueName: "test_queue_rk_default",
+							Durable:   true,
+						},
+					},
+				},
+			)
+
+		pub, err := publisher.New[Msg](
+			context.TODO(),
+			connection.DefaultConfig,
+			mappings.Exchange("test_exchange_rk_default"),
+			publisher.WithExchangeDeclare[Msg](publisher.ExchangeDeclare{
+				RoutingKey: "rk.default",
+				Type:       publisher.ExchangeTypeDirect,
+				Durable:    true,
+			}),
+		)
+		assert.NoError(err)
+		assert.NotNil(pub)
+
+		assert.NoError(pub.Publish(context.Background(), Msg{Name: "routed"}))
+		assert.NoError(pub.Close())
+
+		messages := amqp_testing.ConsumeAMQPMessages[Msg](t, mappings.Queue("test_queue_rk_default"), connection.DefaultConfig, 200*time.Millisecond)
+		assert.Len(messages, 1)
+		assert.Equal("routed", messages[0].Name)
+	})
+
+	t.Run("WithRoutingKey_Override", func(t *testing.T) {
+		t.Parallel()
+
+		mappings := amqp_testing.NewMappings(t, connection.DefaultConfig).
+			AddMappings(
+				amqp_testing.PublisherConfig{
+					Name: "test_exchange_rk_override",
+					Config: publisher.ExchangeDeclare{
+						RoutingKey: "rk.a",
+						Type:       publisher.ExchangeTypeDirect,
+						Durable:    true,
+					},
+				},
+				[]amqp_testing.ConsumerConfig{
+					{
+						Name: "test_queue_rk_a",
+						Config: consumer.QueueDeclare{
+							QueueName: "test_queue_rk_a",
+							Durable:   true,
+						},
+					},
+				},
+			).
+			AddMappings(
+				amqp_testing.PublisherConfig{
+					Name: "test_exchange_rk_override",
+					Config: publisher.ExchangeDeclare{
+						RoutingKey: "rk.b",
+						Type:       publisher.ExchangeTypeDirect,
+						Durable:    true,
+					},
+				},
+				[]amqp_testing.ConsumerConfig{
+					{
+						Name: "test_queue_rk_b",
+						Config: consumer.QueueDeclare{
+							QueueName: "test_queue_rk_b",
+							Durable:   true,
+						},
+					},
+				},
+			)
+
+		pub, err := publisher.New[Msg](
+			context.TODO(),
+			connection.DefaultConfig,
+			mappings.Exchange("test_exchange_rk_override"),
+			publisher.WithExchangeDeclare[Msg](publisher.ExchangeDeclare{
+				RoutingKey: "rk.a",
+				Type:       publisher.ExchangeTypeDirect,
+				Durable:    true,
+			}),
+		)
+		assert.NoError(err)
+		assert.NotNil(pub)
+
+		// Publish to rk.a (default)
+		assert.NoError(pub.Publish(context.Background(), Msg{Name: "msg-a"}))
+		// Publish to rk.b (per-call override)
+		assert.NoError(pub.Publish(context.Background(), Msg{Name: "msg-b"}, publisher.WithRoutingKey("rk.b")))
+		assert.NoError(pub.Close())
+
+		messagesA := amqp_testing.ConsumeAMQPMessages[Msg](t, mappings.Queue("test_queue_rk_a"), connection.DefaultConfig, 200*time.Millisecond)
+		messagesB := amqp_testing.ConsumeAMQPMessages[Msg](t, mappings.Queue("test_queue_rk_b"), connection.DefaultConfig, 200*time.Millisecond)
+
+		assert.Len(messagesA, 1)
+		assert.Equal("msg-a", messagesA[0].Name)
+
+		assert.Len(messagesB, 1)
+		assert.Equal("msg-b", messagesB[0].Name)
 	})
 }
 
