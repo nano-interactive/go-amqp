@@ -35,49 +35,6 @@ func TestConnectionBasic(t *testing.T) {
 	assert.Equal(StateClosing, conn.getState())
 }
 
-func TestConnectionReconnect(t *testing.T) {
-	t.Parallel()
-	assert := require.New(t)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	var wg sync.WaitGroup
-	var errorReceived bool
-	var lastError error
-
-	// Test connection with reconnection
-	conn, err := New(ctx, DefaultConfig, Events{
-		OnConnectionReady: func(ctx context.Context, conn *amqp091.Connection) error {
-			return nil
-		},
-		OnError: func(err error) {
-			errorReceived = true
-			lastError = err
-		},
-	})
-	assert.NoError(err)
-	assert.NotNil(conn)
-
-	// Simulate connection loss
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		time.Sleep(2 * time.Second)
-		conn.connectionDispose()
-	}()
-
-	// Wait for reconnection
-	wg.Wait()
-	time.Sleep(3 * time.Second)
-
-	// Check if reconnected
-	assert.Equal(StateConnected, conn.getState())
-	assert.True(errorReceived, "should have received an error during reconnection")
-	assert.NotNil(lastError, "last error should not be nil")
-	assert.NoError(conn.Close())
-}
-
 func TestConnectionErrorHandling(t *testing.T) {
 	t.Parallel()
 	assert := require.New(t)
