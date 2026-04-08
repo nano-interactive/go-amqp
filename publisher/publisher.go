@@ -28,7 +28,7 @@ var (
 
 type (
 	Pub[T any] interface {
-		Publish(context.Context, T, ...PublishConfig) error
+		Publish(context.Context, T, ...PublishOption) error
 	}
 
 	Publisher[T any] struct {
@@ -225,15 +225,21 @@ func New[T any](ctx context.Context, connectionOpts connection.Config, exchangeN
 	return publisher, nil
 }
 
-type PublishConfig struct{}
-
-func (p *Publisher[T]) Publish(ctx context.Context, msg T, _ ...PublishConfig) error {
+func (p *Publisher[T]) Publish(ctx context.Context, msg T, opts ...PublishOption) error {
 	if p.conn.IsClosed() {
 		return ErrClosed
 	}
 
 	if p.gettingCh.Load() {
 		return ErrChannelNotReady
+	}
+
+	cfg := PublishConfig{
+		RoutingKey: p.routingKey,
+	}
+
+	for _, o := range opts {
+		o(&cfg)
 	}
 
 	body, err := p.serializer.Marshal(msg)
@@ -244,7 +250,7 @@ func (p *Publisher[T]) Publish(ctx context.Context, msg T, _ ...PublishConfig) e
 	return (*p.ch.Load()).PublishWithContext(
 		ctx,
 		p.exchangeName,
-		p.routingKey,
+		cfg.RoutingKey,
 		true,
 		false,
 		amqp091.Publishing{
