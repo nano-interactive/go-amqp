@@ -42,7 +42,14 @@ func WithMessageDeserializer[T any](serializer serializer.Serializer[T]) Option[
 	}
 }
 
-func WithRetryMessageCountCount[T any](count uint32) Option[T] {
+// WithRetryMessageCount sets the number of times a message will be retried before being dropped.
+//
+// WARNING: The retry mechanism used by retryHandler relies on modifying the X-Retry-Count
+// header on the local amqp091.Delivery struct and nacking the message back to the broker
+// with requeue=true. This does NOT work — RabbitMQ redelivers the original message
+// unchanged, discarding any header modifications made by the consumer. As a result, the
+// retry counter resets on every delivery and the message is requeued indefinitely.
+func WithRetryMessageCount[T any](count uint32) Option[T] {
 	return func(c *Config[T]) {
 		c.retryCount = count
 	}
