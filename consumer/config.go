@@ -21,6 +21,11 @@ type QueueDeclare struct {
 	AutoDelete       bool
 	Exclusive        bool
 	NoWait           bool
+	// Arguments are passed to the broker when the queue is declared (for
+	// example x-queue-type, x-delivery-limit or the x-dead-letter-* keys).
+	// Nil, the default, declares the queue with no arguments. RabbitMQ rejects
+	// a declare whose arguments differ from those of an existing queue.
+	Arguments amqp091.Table
 }
 
 type Config[T any] struct {

@@ -47,7 +47,7 @@ func (c *Consumer[T]) watchdog(
 		c.queueDeclare.AutoDelete,
 		c.queueDeclare.Exclusive,
 		c.queueDeclare.NoWait,
-		nil,
+		c.queueDeclare.Arguments,
 	)
 	if err != nil {
 		return nil, err

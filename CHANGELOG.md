@@ -1,5 +1,13 @@
 # Changelog
 
+## [v3.3.0](https://github.com/nano-interactive/go-amqp/releases/tag/v3.3.0) (2026-10-16)
+
+[Full Changelog](https://github.com/nano-interactive/go-amqp/compare/v3.2.9...v3.3.0)
+
+**Implemented enhancements:**
+
+- `consumer.QueueDeclare` gains an optional `Arguments` table passed to the broker when the queue is declared (quorum queues, `x-delivery-limit`, dead-lettering). Nil keeps the previous behaviour.
+
 ## [v3.2.9](https://github.com/nano-interactive/go-amqp/releases/tag/v3.2.9) (2026-04-09)
 
 [Full Changelog](https://github.com/nano-interactive/go-amqp/compare/v3.2.8...v3.2.9)
