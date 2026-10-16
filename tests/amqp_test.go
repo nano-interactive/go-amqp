@@ -430,7 +430,8 @@ func TestConsumerQueueArguments(t *testing.T) {
 	// was created with them.
 	same, err := amqp091.Dial(fmt.Sprintf("amqp://%s:%s@%s:%d/", cfg.User, cfg.Password, cfg.Host, cfg.Port))
 	assert.NoError(err)
-	defer same.Close()
+
+	t.Cleanup(func() { _ = same.Close() })
 
 	sameChannel, err := same.Channel()
 	assert.NoError(err)
