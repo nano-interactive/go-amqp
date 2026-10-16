@@ -369,3 +369,82 @@ func ExamplePublisher() {
 
 	// Output:
 }
+
+// brokerConfig is the default connection, with the port overridable through
+// AMQP_PORT for a broker that is not on 5672.
+func brokerConfig() connection.Config {
+	cfg := connection.DefaultConfig
+
+	if port := os.Getenv("AMQP_PORT"); port != "" {
+		if _, err := fmt.Sscanf(port, "%d", &cfg.Port); err != nil {
+			panic(err)
+		}
+	}
+
+	return cfg
+}
+
+func TestConsumerQueueArguments(t *testing.T) {
+	t.Parallel()
+	assert := require.New(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cfg := brokerConfig()
+
+	_, channel := amqptesting.GetAMQPConnection(t, cfg)
+
+	queue := fmt.Sprintf("test_queue_arguments_%d", time.Now().UnixNano())
+	args := amqp091.Table{
+		"x-queue-type":              "quorum",
+		"x-delivery-limit":          int64(1),
+		"x-dead-letter-exchange":    "",
+		"x-dead-letter-routing-key": queue + ".dlq",
+	}
+
+	t.Cleanup(func() {
+		_, _ = channel.QueueDelete(queue, false, false, false)
+	})
+
+	c, err := consumer.NewFunc(
+		func(_ context.Context, _ Message) error { return nil },
+		cfg,
+		consumer.QueueDeclare{QueueName: queue, Durable: true, Arguments: args},
+		consumer.WithOnMessageError[Message](func(_ context.Context, _ *amqp091.Delivery, err error) {
+			t.Logf("Message error: %s", err)
+		}),
+	)
+	assert.NoError(err)
+
+	go func() {
+		if err := c.Start(ctx); err != nil {
+			t.Logf("Consumer error: %s", err)
+		}
+	}()
+
+	// Wait for the consumer to declare the queue.
+	time.Sleep(500 * time.Millisecond)
+
+	// Re-declaring with the same arguments succeeds, which shows the queue
+	// was created with them.
+	same, err := amqp091.Dial(fmt.Sprintf("amqp://%s:%s@%s:%d/", cfg.User, cfg.Password, cfg.Host, cfg.Port))
+	assert.NoError(err)
+	defer same.Close()
+
+	sameChannel, err := same.Channel()
+	assert.NoError(err)
+
+	_, err = sameChannel.QueueDeclare(queue, true, false, false, false, args)
+	assert.NoError(err)
+
+	// Re-declaring with no arguments is refused, which shows the arguments
+	// were not dropped.
+	other, err := same.Channel()
+	assert.NoError(err)
+
+	_, err = other.QueueDeclare(queue, true, false, false, false, nil)
+	assert.Error(err)
+
+	assert.NoError(c.Close())
+}
